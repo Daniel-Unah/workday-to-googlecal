@@ -18,14 +18,6 @@ A simple, client-side web application that converts Workday schedule exports (.x
 2. **Upload Here**: Drag and drop your file into the converter
 3. **Download Calendar**: Get your .ics file ready for Google Calendar
 
-## Project Structure
-
-```
-workday-to-googlecal/
-├── index.html          # The entire application (single file!)
-└── README.md           # This file
-```
-
 ## How to Export from Workday
 
 1. **Log into Workday**
@@ -75,3 +67,4 @@ If you encounter any issues:
 - Built for students to easily manage their academic schedules
 - Inspired by the need for better calendar integration with Workday
 - Uses modern web technologies for optimal user experience
+
