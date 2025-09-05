@@ -200,15 +200,12 @@
                 return [];
             }
             
-            console.log('Raw Excel data:', data);
-            
             // Find header row (look for common column names)
             let headerRow = 0;
             
             // Try to find the right row with headers - look for the row with both "Meeting Patterns" and "Instructor"
             for (let i = 0; i < Math.min(10, data.length); i++) {
                 const row = data[i] || [];
-                console.log(`Checking row ${i}:`, row);
                 
                 // Look for a row that has both "Meeting Patterns" and "Instructor" columns
                 const hasMeetingPatterns = row.some(cell => 
@@ -226,19 +223,11 @@
                 
                 if (hasMeetingPatterns && hasInstructor && hasCourseListing) {
                     headerRow = i;
-                    console.log('Found header row at index:', headerRow);
                     break;
                 }
             }
             
             const headers = data[headerRow] || [];
-            console.log('Using headers:', headers);
-            console.log('Header row index:', headerRow);
-            
-            // Let's see what the actual headers look like
-            headers.forEach((header, index) => {
-                console.log(`Header ${index}: "${header}"`);
-            });
             
             const courses = [];
             
@@ -253,7 +242,6 @@
             };
             
             // Force manual mapping since automatic detection is unreliable
-            console.log('Using manual mapping based on data structure');
             // Based on the data: Course Listing=1, Registration Status=5, Meeting Patterns=9, Instructor=10
             columnMap.courseListing = 1;
             columnMap.registrationStatus = 5;
@@ -262,27 +250,11 @@
             columnMap.startDate = 11;
             columnMap.endDate = 12;
             
-            // Debug: Let's see what each column contains
-            console.log('Column mapping results:');
-            Object.keys(columnMap).forEach(key => {
-                const index = columnMap[key];
-                const headerName = index >= 0 ? headers[index] : 'NOT FOUND';
-                console.log(`${key}: index ${index} -> "${headerName}"`);
-            });
-            
-            console.log('Column mapping:', columnMap);
-            
-            // Let's also check a sample row to see what data we're working with
-            if (data.length > headerRow + 1) {
-                console.log('Sample data row:', data[headerRow + 1]);
-            }
-            
             // Parse each row
             for (let i = headerRow + 1; i < data.length; i++) {
                 const row = data[i] || [];
                 if (row.every(cell => !cell)) continue; // Skip empty rows
                 
-                console.log(`Processing row ${i}:`, row);
                 
                 // Extract course name from Course Listing column
                 const courseListing = getCellValue(row, columnMap.courseListing) || '';
@@ -290,16 +262,13 @@
                 
                 // Extract meeting info from Meeting Patterns column
                 const meetingPatterns = getCellValue(row, columnMap.meetingPatterns) || '';
-                console.log(`Meeting patterns for ${courseName}:`, meetingPatterns);
                 const meetingInfo = parseMeetingPatterns(meetingPatterns);
                 
                 // Get instructor
                 const instructor = getCellValue(row, columnMap.instructor) || '';
-                console.log(`Instructor for ${courseName}:`, instructor);
                 
                 // Get registration status
                 const registrationStatus = getCellValue(row, columnMap.registrationStatus);
-                console.log(`Registration status for ${courseName}:`, registrationStatus);
                 
                 const course = {
                     id: courses.length + 1,
@@ -312,7 +281,6 @@
                     registrationStatus: registrationStatus
                 };
                 
-                console.log(`Row ${i} -> Course:`, course);
                 
                 // Only add if it's a valid course
                 if (isValidCourse(course, row)) {
@@ -410,26 +378,19 @@
             
             // Check registration status - filter out unregistered/dropped classes
             const registrationStatus = course.registrationStatus || '';
-            console.log(`Checking registration status for ${course.title}: "${registrationStatus}"`);
             
             if (registrationStatus.toLowerCase().includes('unregistered') || 
                 registrationStatus.toLowerCase().includes('dropped') ||
                 registrationStatus.toLowerCase().includes('withdrawn')) {
-                console.log(`Filtering out dropped class: ${course.title} (Status: ${registrationStatus})`);
                 return false;
             }
-            
-            console.log(`Keeping valid course: ${course.title} (Status: ${registrationStatus})`);
             
             return true;
         }
         
         function parseMeetingPatterns(meetingPatterns) {
-            console.log('Parsing meeting patterns:', meetingPatterns);
-            
             // Parse strings like "Mon/Wed | 5:30 PM - 7:00 PM | RIDGLEY, Room 00016"
             const parts = meetingPatterns.split('|').map(p => p.trim());
-            console.log('Split parts:', parts);
             
             let days = 'Monday';
             let startTime = '09:00';
@@ -439,7 +400,6 @@
             if (parts.length >= 1) {
                 // Parse days
                 const dayStr = parts[0];
-                console.log('Parsing days from:', dayStr);
                 
                 // Handle multiple days like "Mon/Wed"
                 if (dayStr.includes('/')) {
@@ -465,44 +425,33 @@
                     if (dayStr.includes('Sat')) days = 'Saturday';
                     if (dayStr.includes('Sun')) days = 'Sunday';
                 }
-                console.log('Parsed days:', days);
             }
             
             if (parts.length >= 2) {
                 // Parse time
                 const timeStr = parts[1];
-                console.log('Parsing time from:', timeStr);
                 const timeMatch = timeStr.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/);
                 if (timeMatch) {
                     startTime = timeMatch[1];
                     endTime = timeMatch[2];
-                    console.log('Parsed times:', startTime, 'to', endTime);
-                } else {
-                    console.log('No time match found');
                 }
             }
             
             if (parts.length >= 3) {
                 // Parse location
                 location = parts[2];
-                console.log('Parsed location:', location);
             }
             
-            const result = { days, startTime, endTime, location };
-            console.log('Final meeting info:', result);
-            return result;
+            return { days, startTime, endTime, location };
         }
 
         function findColumn(headers, keywords) {
             for (let i = 0; i < headers.length; i++) {
                 const header = (headers[i] || '').toString().toLowerCase().trim();
-                console.log(`Checking header "${header}" against keywords:`, keywords);
                 if (keywords.some(keyword => header.includes(keyword.toLowerCase()))) {
-                    console.log(`Found match: "${header}" matches keyword`);
                     return i;
                 }
             }
-            console.log('No match found for keywords:', keywords);
             return -1;
         }
 
