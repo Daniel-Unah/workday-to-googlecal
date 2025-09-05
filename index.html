@@ -205,17 +205,26 @@
             // Find header row (look for common column names)
             let headerRow = 0;
             
-            // Try to find the right row with headers
-            for (let i = 0; i < Math.min(5, data.length); i++) {
+            // Try to find the right row with headers - look for the row with both "Meeting Patterns" and "Instructor"
+            for (let i = 0; i < Math.min(10, data.length); i++) {
                 const row = data[i] || [];
                 console.log(`Checking row ${i}:`, row);
-                if (row.some(cell => 
+                
+                // Look for a row that has both "Meeting Patterns" and "Instructor" columns
+                const hasMeetingPatterns = row.some(cell => 
                     cell && typeof cell === 'string' && 
-                    (cell.toLowerCase().includes('meeting patterns') || 
-                     cell.toLowerCase().includes('instructor') ||
-                     cell.toLowerCase().includes('start date') ||
-                     cell.toLowerCase().includes('course listing'))
-                )) {
+                    cell.toLowerCase().includes('meeting patterns')
+                );
+                const hasInstructor = row.some(cell => 
+                    cell && typeof cell === 'string' && 
+                    cell.toLowerCase().includes('instructor')
+                );
+                const hasCourseListing = row.some(cell => 
+                    cell && typeof cell === 'string' && 
+                    cell.toLowerCase().includes('course listing')
+                );
+                
+                if (hasMeetingPatterns && hasInstructor && hasCourseListing) {
                     headerRow = i;
                     console.log('Found header row at index:', headerRow);
                     break;
@@ -224,6 +233,13 @@
             
             const headers = data[headerRow] || [];
             console.log('Using headers:', headers);
+            console.log('Header row index:', headerRow);
+            
+            // Let's see what the actual headers look like
+            headers.forEach((header, index) => {
+                console.log(`Header ${index}: "${header}"`);
+            });
+            
             const courses = [];
             
             // Map Workday-specific column names
@@ -232,10 +248,34 @@
                 meetingPatterns: findColumn(headers, ['meeting patterns', 'enrolled sections meeting patterns', 'schedule', 'days', 'time']),
                 instructor: findColumn(headers, ['instructor', 'professor', 'teacher', 'staff']),
                 startDate: findColumn(headers, ['start date', 'start']),
-                endDate: findColumn(headers, ['end date', 'end'])
+                endDate: findColumn(headers, ['end date', 'end']),
+                registrationStatus: findColumn(headers, ['registration status', 'status', 'enrollment status'])
             };
             
+            // Force manual mapping since automatic detection is unreliable
+            console.log('Using manual mapping based on data structure');
+            // Based on the data: Course Listing=1, Registration Status=5, Meeting Patterns=9, Instructor=10
+            columnMap.courseListing = 1;
+            columnMap.registrationStatus = 5;
+            columnMap.meetingPatterns = 9;
+            columnMap.instructor = 10;
+            columnMap.startDate = 11;
+            columnMap.endDate = 12;
+            
+            // Debug: Let's see what each column contains
+            console.log('Column mapping results:');
+            Object.keys(columnMap).forEach(key => {
+                const index = columnMap[key];
+                const headerName = index >= 0 ? headers[index] : 'NOT FOUND';
+                console.log(`${key}: index ${index} -> "${headerName}"`);
+            });
+            
             console.log('Column mapping:', columnMap);
+            
+            // Let's also check a sample row to see what data we're working with
+            if (data.length > headerRow + 1) {
+                console.log('Sample data row:', data[headerRow + 1]);
+            }
             
             // Parse each row
             for (let i = headerRow + 1; i < data.length; i++) {
@@ -250,7 +290,16 @@
                 
                 // Extract meeting info from Meeting Patterns column
                 const meetingPatterns = getCellValue(row, columnMap.meetingPatterns) || '';
+                console.log(`Meeting patterns for ${courseName}:`, meetingPatterns);
                 const meetingInfo = parseMeetingPatterns(meetingPatterns);
+                
+                // Get instructor
+                const instructor = getCellValue(row, columnMap.instructor) || '';
+                console.log(`Instructor for ${courseName}:`, instructor);
+                
+                // Get registration status
+                const registrationStatus = getCellValue(row, columnMap.registrationStatus);
+                console.log(`Registration status for ${courseName}:`, registrationStatus);
                 
                 const course = {
                     id: courses.length + 1,
@@ -259,13 +308,14 @@
                     time: meetingInfo.startTime || '09:00',
                     endTime: meetingInfo.endTime || '10:00',
                     location: meetingInfo.location || '',
-                    instructor: getCellValue(row, columnMap.instructor) || ''
+                    instructor: instructor,
+                    registrationStatus: registrationStatus
                 };
                 
                 console.log(`Row ${i} -> Course:`, course);
                 
-                // Only add if we have a meaningful title
-                if (course.title && course.title !== 'Untitled Event' && course.title.length > 2) {
+                // Only add if it's a valid course
+                if (isValidCourse(course, row)) {
                     courses.push(course);
                 }
             }
@@ -280,6 +330,98 @@
                 return `${match[1]} - ${match[2]}`;
             }
             return courseListing;
+        }
+
+        function isNavigationOrHeader(title) {
+            // Filter out navigation elements, headers, and non-course content
+            const navigationTerms = [
+                'calendar view',
+                'edit registration', 
+                'my enrolled courses',
+                'my dropped',
+                'withdrawn courses',
+                'enrolled credit hours',
+                'full-time',
+                'part-time',
+                'view my courses',
+                'academic year',
+                'semester',
+                'term',
+                'student information',
+                'registration',
+                'schedule',
+                'courses',
+                'academic',
+                'undergraduate',
+                'graduate',
+                'bachelor',
+                'master',
+                'doctor',
+                'school of',
+                'department',
+                'college',
+                'university',
+                'active',
+                'inactive',
+                'status',
+                'credit',
+                'hours',
+                'gpa',
+                'grade',
+                'transcript'
+            ];
+            
+            const lowerTitle = title.toLowerCase();
+            
+            // Check if title contains navigation terms
+            for (const term of navigationTerms) {
+                if (lowerTitle.includes(term)) {
+                    return true;
+                }
+            }
+            
+            // Check if it's a student info line (contains student name and ID)
+            if (lowerTitle.includes('(') && lowerTitle.includes(')') && 
+                (lowerTitle.includes('student') || lowerTitle.includes('undergraduate') || lowerTitle.includes('graduate'))) {
+                return true;
+            }
+            
+            // Check if it's just a date or number
+            if (/^\d+$/.test(title.trim()) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(title.trim())) {
+                return true;
+            }
+            
+            return false;
+        }
+
+        function isValidCourse(course, row) {
+            // Check if this is a valid course (not dropped, has proper format, etc.)
+            
+            // Must have a course code pattern (like CSE 4501, BIOL 3100, etc.)
+            const courseCodePattern = /^[A-Z]{2,4}\s+\d{4}/;
+            if (!courseCodePattern.test(course.title)) {
+                return false;
+            }
+            
+            // Must not be navigation/header
+            if (isNavigationOrHeader(course.title)) {
+                return false;
+            }
+            
+            // Check registration status - filter out unregistered/dropped classes
+            const registrationStatus = course.registrationStatus || '';
+            console.log(`Checking registration status for ${course.title}: "${registrationStatus}"`);
+            
+            if (registrationStatus.toLowerCase().includes('unregistered') || 
+                registrationStatus.toLowerCase().includes('dropped') ||
+                registrationStatus.toLowerCase().includes('withdrawn')) {
+                console.log(`Filtering out dropped class: ${course.title} (Status: ${registrationStatus})`);
+                return false;
+            }
+            
+            console.log(`Keeping valid course: ${course.title} (Status: ${registrationStatus})`);
+            
+            return true;
         }
         
         function parseMeetingPatterns(meetingPatterns) {
@@ -353,11 +495,14 @@
 
         function findColumn(headers, keywords) {
             for (let i = 0; i < headers.length; i++) {
-                const header = (headers[i] || '').toString().toLowerCase();
-                if (keywords.some(keyword => header.includes(keyword))) {
+                const header = (headers[i] || '').toString().toLowerCase().trim();
+                console.log(`Checking header "${header}" against keywords:`, keywords);
+                if (keywords.some(keyword => header.includes(keyword.toLowerCase()))) {
+                    console.log(`Found match: "${header}" matches keyword`);
                     return i;
                 }
             }
+            console.log('No match found for keywords:', keywords);
             return -1;
         }
 
