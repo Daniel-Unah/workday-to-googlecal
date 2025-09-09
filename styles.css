@@ -319,6 +319,151 @@ h2 {
     display: none;
 }
 
+/* Automation Features */
+.automation-section, .manual-section {
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 8px;
+    border: 2px solid #e2e8f0;
+}
+
+.automation-section {
+    background: linear-gradient(135deg, #f0fff4 0%, #e6fffa 100%);
+    border-color: #68d391;
+}
+
+.manual-section {
+    background: #f7fafc;
+    border-color: #cbd5e0;
+}
+
+.automation-section h3, .manual-section h3 {
+    margin-bottom: 15px;
+    color: #2d3748;
+    font-size: 1.2rem;
+}
+
+.help-text {
+    font-size: 0.9rem;
+    color: #718096;
+    font-style: italic;
+    margin-top: 10px;
+}
+
+/* Google Calendar Integration */
+.google-calendar-section {
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+    border: 2px solid #fc8181;
+}
+
+.google-calendar-section h3 {
+    margin-bottom: 15px;
+    color: #2d3748;
+    font-size: 1.2rem;
+}
+
+.calendar-options {
+    margin: 15px 0;
+}
+
+.calendar-options label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #4a5568;
+}
+
+.form-select {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 1rem;
+    background: white;
+    color: #4a5568;
+}
+
+.form-select:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+/* Button Variants */
+.btn-google {
+    background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+    color: white;
+    border: none;
+}
+
+.btn-google:hover {
+    background: linear-gradient(135deg, #3367d6 0%, #2d8f47 100%);
+    transform: translateY(-2px);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    color: white;
+    border: none;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+    transform: translateY(-2px);
+}
+
+.btn-success:disabled {
+    background: #a0aec0;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+    transform: translateY(-2px);
+}
+
+/* Manual Download Section */
+.manual-download-section {
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 8px;
+    background: #f7fafc;
+    border: 2px solid #cbd5e0;
+}
+
+.manual-download-section h3 {
+    margin-bottom: 15px;
+    color: #2d3748;
+    font-size: 1.2rem;
+}
+
+/* Loading States */
+.btn-icon {
+    margin-right: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .automation-section, .manual-section, .google-calendar-section, .manual-download-section {
+        padding: 15px;
+    }
+    
+    .btn {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
+
 .footer {
     text-align: center;
     color: rgba(255, 255, 255, 0.8);

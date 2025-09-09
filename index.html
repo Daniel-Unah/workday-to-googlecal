@@ -31,11 +31,14 @@
             </div>
         </div>
 
-        <!-- Step 1: Instructions -->
+        <!-- Step 1: Get Your Schedule -->
         <div class="card">
-            <h2><span class="step-number">1</span>Export from Workday</h2>
-            <div class="instructions">
-                <p><strong>How to get your schedule from Workday:</strong></p>
+            <h2><span class="step-number">1</span>Get Your Schedule</h2>
+            
+            <!-- Manual Option -->
+            <div class="manual-section">
+                <h3>📤 Manual Upload</h3>
+                <p><strong>How to get your schedule from Workday manually:</strong></p>
                 <ol>
                     <li>Log into your Workday account</li>
                     <li>Navigate to your course schedule or academic calendar</li>
@@ -63,18 +66,49 @@
             <div id="preview"></div>
         </div>
 
-        <!-- Step 3: Download -->
-                  <div class="card">
+        <!-- Step 3: Add to Calendar -->
+        <div class="card">
             <h2><span class="step-number">3</span>Add to Your Calendar</h2>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; flex-direction: column; align-items: center;">
-              <button id="downloadBtn" class="btn" disabled>Download ICS File</button>
-              <button id="resetBtn" class="btn btn-secondary" onclick="resetConverter()">Upload New File</button>
+            
+            <!-- Google Calendar Integration -->
+            <div class="google-calendar-section">
+                <h3>📅 Google Calendar (Recommended)</h3>
+                <div id="googleAuthSection">
+                    <p>Connect your Google Calendar to automatically add all courses:</p>
+                    <button id="googleAuthBtn" class="btn btn-google">
+                        <span class="btn-icon">🔗</span>
+                        Connect Google Calendar
+                    </button>
+                    <p class="help-text">One-click setup to add all your courses directly to Google Calendar</p>
+                </div>
+                
+                <div id="googleCalendarSection" class="hidden">
+                    <p>✅ Connected to Google Calendar!</p>
+                    <div class="calendar-options">
+                        <label for="calendarSelect">Choose calendar:</label>
+                        <select id="calendarSelect" class="form-select">
+                            <option value="primary">Primary Calendar</option>
+                        </select>
+                    </div>
+                    <button id="addToGoogleBtn" class="btn btn-success" disabled>
+                        <span class="btn-icon">➕</span>
+                        Add All Courses to Google Calendar
+                    </button>
+                </div>
             </div>
-            <p style="margin-top: 15px; color: #666;">
-              <strong>ICS File:</strong> Import the downloaded .ics file into Google Calendar, Outlook, Apple Calendar, or any calendar application.<br>
-              <strong>Google Calendar:</strong> Use the individual "Add to Google Calendar" buttons in the table above to add each course to your calendar.
-            </p>
-          </div>
+
+            <!-- Manual Download Options -->
+            <div class="manual-download-section">
+                <h3>📥 Manual Download</h3>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; flex-direction: column; align-items: center;">
+                    <button id="downloadBtn" class="btn" disabled>Download ICS File</button>
+                    <button id="resetBtn" class="btn btn-secondary" onclick="resetConverter()">Upload New File</button>
+                </div>
+                <p style="margin-top: 15px; color: #666;">
+                    <strong>ICS File:</strong> Import the downloaded .ics file into Google Calendar, Outlook, Apple Calendar, or any calendar application.
+                </p>
+            </div>
+        </div>
 
         <div class="footer">
             <p>Built for students • No data is stored or sent to servers • Everything processes locally in your browser</p>
@@ -175,7 +209,7 @@
                     
                     courses = parseWorkdayData(jsonData);
                     
-                    console.log('Final parsed courses:', courses);
+                    // console.log('Final parsed courses:', courses);
                     
                     if (courses.length === 0) {
                         showError('No courses found. The Excel file might be in an unsupported format. Please try saving it as a different Excel format (.xlsx) or check the browser console for debugging info.');
@@ -184,6 +218,12 @@
                     
                     displayPreview(courses);
                     document.getElementById('downloadBtn').disabled = false;
+                    
+                    // Enable Google Calendar button if authenticated
+                    if (isGoogleAuthenticated) {
+                        document.getElementById('addToGoogleBtn').disabled = false;
+                    }
+                    
                     showSuccess(`Successfully parsed ${courses.length} courses!`);
                     
                 } catch (error) {
@@ -258,6 +298,14 @@
                 
                 // Extract course name from Course Listing column
                 const courseListing = getCellValue(row, columnMap.courseListing) || '';
+                // console.log('Row data:', row, 'columnMap.courseListing:', columnMap.courseListing, 'courseListing:', courseListing);
+                
+                // Skip rows with empty or invalid course listings
+                if (!courseListing || courseListing.trim() === '' || courseListing === 'Course Listing' || courseListing === '13') {
+                    // console.log('Skipping row with invalid course listing:', courseListing);
+                    continue;
+                }
+                
                 const courseName = extractCourseName(courseListing);
                 
                 // Extract meeting info from Meeting Patterns column
@@ -270,6 +318,14 @@
                 // Get registration status
                 const registrationStatus = getCellValue(row, columnMap.registrationStatus);
                 
+                // Extract and convert dates from Excel serial numbers
+                const startDateSerial = getCellValue(row, columnMap.startDate);
+                const endDateSerial = getCellValue(row, columnMap.endDate);
+                
+                // Convert Excel serial numbers to dates
+                const startDate = startDateSerial ? convertExcelDate(startDateSerial) : null;
+                const endDate = endDateSerial ? convertExcelDate(endDateSerial) : null;
+                
                 const course = {
                     id: courses.length + 1,
                     title: courseName || 'Untitled Event',
@@ -278,7 +334,9 @@
                     endTime: meetingInfo.endTime || '10:00',
                     location: meetingInfo.location || '',
                     instructor: instructor,
-                    registrationStatus: registrationStatus
+                    registrationStatus: registrationStatus,
+                    startDate: startDate,
+                    endDate: endDate
                 };
                 
                 
@@ -293,10 +351,17 @@
         
         function extractCourseName(courseListing) {
             // Extract course name from strings like "CSE 4501 - Video Game Programming II"
+            if (!courseListing || courseListing.trim() === '') {
+                return 'Untitled Course';
+            }
+            
+            // Check if it looks like a course code (e.g., "CSE 4501 - Video Game Programming II")
             const match = courseListing.match(/([A-Z]{2,4}\s+\d{4})\s*-\s*(.+?)(?:\s*-\s*Fall|$)/);
             if (match) {
                 return `${match[1]} - ${match[2]}`;
             }
+            
+            // If it doesn't match the pattern, return as-is
             return courseListing;
         }
 
@@ -430,6 +495,9 @@
             if (parts.length >= 2) {
                 // Parse time
                 const timeStr = parts[1];
+                if (!timeStr) {
+                    return { days, startTime, endTime, location };
+                }
                 const timeMatch = timeStr.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/);
                 if (timeMatch) {
                     startTime = timeMatch[1];
@@ -458,6 +526,26 @@
         function getCellValue(row, columnIndex) {
             if (columnIndex === -1 || !row[columnIndex]) return '';
             return row[columnIndex].toString().trim();
+        }
+
+        function convertExcelDate(excelSerial) {
+            // Excel serial numbers start from 1900-01-01 (serial 1)
+            // But Excel incorrectly treats 1900 as a leap year, so we need to adjust
+            const excelEpoch = new Date(1900, 0, 1); // January 1, 1900
+            const serial = parseFloat(excelSerial);
+            
+            if (isNaN(serial)) return null;
+            
+            // Excel serial numbers are days since 1900-01-01
+            // But Excel has a bug where it treats 1900 as a leap year
+            // So we need to subtract 2 days for dates after 1900-02-28
+            let adjustedSerial = serial;
+            if (serial > 59) { // After 1900-02-28
+                adjustedSerial = serial - 2;
+            }
+            
+            const date = new Date(excelEpoch.getTime() + (adjustedSerial - 1) * 24 * 60 * 60 * 1000);
+            return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
         }
 
         function displayPreview(courses) {
@@ -817,6 +905,150 @@
             document.getElementById('preview').innerHTML = '';
             hideMessages();
         }
+
+        // New automation features
+        let isGoogleAuthenticated = false;
+
+
+        // Google Calendar authentication
+        document.getElementById('googleAuthBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/auth/google/url');
+                const data = await response.json();
+                
+                if (data.authUrl) {
+                    // Open Google OAuth in a new window
+                    const authWindow = window.open(data.authUrl, 'google-auth', 'width=500,height=600');
+                    
+                    // Check for authentication completion
+                    const checkAuth = setInterval(async () => {
+                        if (authWindow.closed) {
+                            clearInterval(checkAuth);
+                            await checkGoogleAuthStatus();
+                        }
+                    }, 1000);
+                } else {
+                    showError('Failed to get Google authentication URL');
+                }
+            } catch (error) {
+                showError('Error connecting to Google Calendar: ' + error.message);
+            }
+        });
+
+        // Check Google Calendar authentication status
+        async function checkGoogleAuthStatus() {
+            try {
+                const response = await fetch('/api/auth/google/status');
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    isGoogleAuthenticated = true;
+                    document.getElementById('googleAuthSection').classList.add('hidden');
+                    document.getElementById('googleCalendarSection').classList.remove('hidden');
+                    
+                    // Load user's calendars
+                    await loadGoogleCalendars();
+                    
+                    // Enable the add to Google button if courses are loaded
+                    if (courses.length > 0) {
+                        document.getElementById('addToGoogleBtn').disabled = false;
+                    }
+                } else {
+                    showError('Google Calendar authentication failed');
+                }
+            } catch (error) {
+                showError('Error checking Google Calendar status: ' + error.message);
+            }
+        }
+
+        // Load user's Google Calendars
+        async function loadGoogleCalendars() {
+            try {
+                const response = await fetch('/api/calendars');
+                const data = await response.json();
+                
+                const select = document.getElementById('calendarSelect');
+                select.innerHTML = '<option value="primary">Primary Calendar</option>';
+                
+                data.calendars.forEach(calendar => {
+                    if (calendar.id !== 'primary') {
+                        const option = document.createElement('option');
+                        option.value = calendar.id;
+                        option.textContent = calendar.summary;
+                        select.appendChild(option);
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading calendars:', error);
+            }
+        }
+
+        // Add courses to Google Calendar
+        document.getElementById('addToGoogleBtn').addEventListener('click', async () => {
+            if (!isGoogleAuthenticated || courses.length === 0) {
+                showError('Please authenticate with Google Calendar and load courses first');
+                return;
+            }
+            
+            const btn = document.getElementById('addToGoogleBtn');
+            const originalText = btn.innerHTML;
+            const calendarId = document.getElementById('calendarSelect').value;
+            
+            try {
+                btn.innerHTML = '<span class="btn-icon">⏳</span>Adding to Calendar...';
+                btn.disabled = true;
+                
+                // Send minimal data to server - let server handle all the processing
+                const response = await fetch('/api/calendar/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        courses: courses.map(course => ({
+                            title: course.title,
+                            days: course.days,
+                            time: course.time,
+                            endTime: course.endTime,
+                            location: course.location,
+                            instructor: course.instructor,
+                            startDate: course.startDate,
+                            endDate: course.endDate
+                        })),
+                        calendarId: calendarId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess(`Successfully added ${result.eventsCreated} events to Google Calendar!`);
+                } else {
+                    showError('Failed to add events to Google Calendar: ' + result.error);
+                }
+            } catch (error) {
+                showError('Error adding events to Google Calendar: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+
+
+        // Check Google auth status on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkGoogleAuthStatus();
+        });
+
+        // Update the existing parseExcelFile function to enable Google Calendar button
+        const originalParseExcelFile = parseExcelFile;
+        parseExcelFile = function(file) {
+            const result = originalParseExcelFile(file);
+            if (result && isGoogleAuthenticated && courses.length > 0) {
+                document.getElementById('addToGoogleBtn').disabled = false;
+            }
+            return result;
+        };
     </script>
 </body>
 </html>
