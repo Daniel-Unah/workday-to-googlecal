@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -52,36 +51,15 @@ app.get('/', (req, res) => {
  */
 app.post('/api/auth/google/disconnect', (req, res) => {
     try {
-        console.log('Disconnect request received');
-        console.log('Session exists:', !!req.session);
-        console.log('Session ID:', req.session?.id);
-        console.log('Has googleTokens:', !!req.session?.googleTokens);
-        
-        // Check if session exists
-        if (!req.session) {
-            console.log('No session found, returning already disconnected');
-            return res.json({ success: true, message: 'Not connected to Google Calendar' });
+        // Clear the stored tokens for this user
+        if (req.session && req.session.userId) {
+            const tokensPath = path.join(__dirname, 'tokens', `${req.session.userId}.json`);
+            if (fs.existsSync(tokensPath)) {
+                fs.unlinkSync(tokensPath);
+            }
         }
         
-        // Clear the stored tokens
-        if (req.session.googleTokens) {
-            console.log('Clearing googleTokens from session');
-            delete req.session.googleTokens;
-            
-            // Try to save session, but don't fail if it doesn't work
-            req.session.save((err) => {
-                if (err) {
-                    console.error('Error saving session:', err);
-                    // Still return success since we cleared the tokens
-                    return res.json({ success: true, message: 'Disconnected successfully' });
-                }
-                console.log('Session saved successfully');
-                res.json({ success: true, message: 'Disconnected successfully' });
-            });
-        } else {
-            console.log('No googleTokens found, returning not connected');
-            res.json({ success: true, message: 'Not connected to Google Calendar' });
-        }
+        res.json({ success: true, message: 'Disconnected successfully' });
     } catch (error) {
         console.error('Disconnect error:', error);
         res.status(500).json({ error: 'Failed to disconnect from Google Calendar' });
@@ -93,10 +71,19 @@ app.post('/api/auth/google/disconnect', (req, res) => {
  */
 app.get('/api/auth/google/url', (req, res) => {
     try {
-        const calendarManager = new GoogleCalendarManager();
+        // Generate a unique user ID for this session
+        if (!req.session.userId) {
+            req.session.userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            req.session.save();
+        }
+        
+        console.log('Generating auth URL for user:', req.session.userId);
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
         const authUrl = calendarManager.getAuthUrl();
+        console.log('Generated auth URL:', authUrl);
         res.json({ authUrl });
     } catch (error) {
+        console.error('Error generating auth URL:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -108,12 +95,34 @@ app.get('/auth/google/callback', async (req, res) => {
     try {
         const { code } = req.query;
         
+        console.log('OAuth callback received for session:', req.session.userId);
+        
         if (!code) {
+            console.log('No authorization code provided');
             return res.status(400).send('Authorization code not provided');
         }
 
-        const calendarManager = new GoogleCalendarManager();
-        await calendarManager.getTokens(code);
+        if (!req.session.userId) {
+            console.log('No user ID in session during callback');
+            return res.status(400).send('Session expired. Please try again.');
+        }
+
+        console.log('Getting tokens for user:', req.session.userId);
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
+        
+        try {
+            const tokens = await calendarManager.getTokens(code);
+            console.log('Tokens saved successfully for user:', req.session.userId);
+            
+            // Store tokens in session for production
+            if (process.env.NODE_ENV === 'production') {
+                req.session.googleTokens = tokens;
+                req.session.save();
+            }
+        } catch (tokenError) {
+            console.error('Error in getTokens:', tokenError);
+            throw tokenError;
+        }
         
         res.send(`
             <html>
@@ -129,6 +138,7 @@ app.get('/auth/google/callback', async (req, res) => {
             </html>
         `);
     } catch (error) {
+        console.error('OAuth callback error:', error);
         res.status(500).send(`
             <html>
                 <body>
@@ -146,10 +156,24 @@ app.get('/auth/google/callback', async (req, res) => {
  */
 app.get('/api/auth/google/status', async (req, res) => {
     try {
-        const calendarManager = new GoogleCalendarManager();
+        console.log('Checking authentication status for session:', req.session.userId);
+        
+        if (!req.session.userId) {
+            console.log('No user ID in session');
+            return res.json({ authenticated: false });
+        }
+        
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
+        // Pass session tokens for production
+        if (process.env.NODE_ENV === 'production' && req.session.googleTokens) {
+            calendarManager.sessionTokens = req.session.googleTokens;
+        }
         const isAuthenticated = await calendarManager.isAuthenticated();
+        
+        console.log('Authentication result:', isAuthenticated);
         res.json({ authenticated: isAuthenticated });
     } catch (error) {
+        console.error('Error checking authentication status:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -159,7 +183,11 @@ app.get('/api/auth/google/status', async (req, res) => {
  */
 app.get('/api/calendars', async (req, res) => {
     try {
-        const calendarManager = new GoogleCalendarManager();
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+        
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
         const calendars = await calendarManager.getCalendars();
         res.json({ calendars });
     } catch (error) {
@@ -172,22 +200,18 @@ app.get('/api/calendars', async (req, res) => {
  */
 app.post('/api/calendar/events', async (req, res) => {
     try {
-        const { courses, calendarId } = req.body;
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
         
-        // console.log('Received courses data:', JSON.stringify(courses, null, 2));
+        const { courses, calendarId = 'primary' } = req.body;
         
         if (!courses || !Array.isArray(courses)) {
             return res.status(400).json({ error: 'Courses data is required' });
         }
 
-        const calendarManager = new GoogleCalendarManager();
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
         const result = await calendarManager.createEvents(courses, calendarId);
-        
-        // console.log('Sending response:', {
-        //     success: true,
-        //     eventsCreated: result.events.length,
-        //     errors: result.errors
-        // });
         
         res.json({
             success: true,
@@ -195,33 +219,47 @@ app.post('/api/calendar/events', async (req, res) => {
             errors: result.errors
         });
     } catch (error) {
+        console.error('Error creating events:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-
 /**
- * Upload and process Excel file
+ * Handle file upload
  */
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', upload.single('file'), (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        // Read the uploaded file
-        const filePath = req.file.path;
-        const fileBuffer = await fs.readFile(filePath);
-        
-        // Clean up uploaded file
-        await fs.remove(filePath);
+        res.json({ 
+            success: true, 
+            filename: req.file.filename,
+            originalName: req.file.originalname 
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
-        // Process the file (this would use the existing parsing logic)
-        // For now, return success - the frontend will handle the parsing
-        res.json({
-            success: true,
-            message: 'File uploaded successfully',
-            fileName: req.file.originalname
+/**
+ * Download generated file
+ */
+app.get('/api/download/:filename', (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const filePath = path.join(__dirname, 'downloads', filename);
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        res.download(filePath, (err) => {
+            if (err) {
+                console.error('Download error:', err);
+                res.status(500).json({ error: 'Download failed' });
+            }
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -240,22 +278,17 @@ app.get('/api/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((error, req, res, next) => {
-    console.error('Server error:', error);
-    res.status(500).json({ 
-        error: 'Internal server error',
-        message: error.message 
-    });
+app.use((err, req, res, next) => {
+    console.error('Server error:', err);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📅 Workday to Google Calendar Converter`);
-    console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`📁 Serving static files from: ${path.join(__dirname, 'public')}`);
+    console.log(`📤 Upload directory: ${path.join(__dirname, 'uploads')}`);
+    console.log(`📥 Download directory: ${path.join(__dirname, 'downloads')}`);
 });
 
 module.exports = app;
-
-
-

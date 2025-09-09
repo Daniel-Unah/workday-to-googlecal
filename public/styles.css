@@ -391,6 +391,33 @@ h2 {
     max-width: calc(50% - 7.5px);
 }
 
+.manual-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin: 15px 0;
+    width: 100%;
+}
+
+.manual-actions .btn {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0 !important;
+    padding: 20px 30px !important;
+    height: auto !important;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    max-width: calc(50% - 7.5px);
+}
+
 .calendar-actions .btn:first-child {
     margin-right: auto;
 }
@@ -505,6 +532,18 @@ h2 {
     .calendar-actions .btn {
         min-width: unset;
         max-width: calc(50% - 5px);
+        padding: 15px 20px;
+        font-size: 14px;
+    }
+    
+    .manual-actions {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .manual-actions .btn {
+        max-width: 100%;
+        width: 100%;
         padding: 15px 20px;
         font-size: 14px;
     }

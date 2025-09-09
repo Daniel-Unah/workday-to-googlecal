@@ -108,7 +108,7 @@
             <!-- Manual Download Options -->
             <div class="manual-download-section">
                 <h3>📥 Manual Download</h3>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; flex-direction: column; align-items: center;">
+                <div class="manual-actions">
                     <button id="downloadBtn" class="btn" disabled>Download ICS File</button>
                     <button id="resetBtn" class="btn btn-secondary" onclick="resetConverter()">Upload New File</button>
                 </div>
@@ -937,7 +937,7 @@
         let isGoogleAuthenticated = false;
 
 
-        // Google Calendar authentication (client-side only)
+        // Google Calendar authentication (server-side with per-user tokens)
         document.getElementById('googleAuthBtn').addEventListener('click', async () => {
             try {
                 // Check if already authenticated
@@ -946,20 +946,24 @@
                     return;
                 }
 
-                // For client-side only approach, we'll open Google Calendar directly
-                // This ensures each user manages their own calendar access
-                showGoogleSuccess('Opening Google Calendar... Each course will open individually for you to add to your personal calendar.');
+                // Get Google OAuth URL from server
+                const response = await fetch('/api/auth/google/url');
+                const data = await response.json();
                 
-                // Simulate authentication for UI purposes
-                isGoogleAuthenticated = true;
-                document.getElementById('googleAuthSection').classList.add('hidden');
-                document.getElementById('googleCalendarSection').classList.remove('hidden');
-                
-                // Enable the add to Google button if courses are loaded
-                if (courses.length > 0) {
-                    document.getElementById('addToGoogleBtn').disabled = false;
+                if (data.authUrl) {
+                    // Open Google OAuth in a new window
+                    const authWindow = window.open(data.authUrl, 'google-auth', 'width=500,height=600');
+                    
+                    // Check for authentication completion
+                    const checkAuth = setInterval(async () => {
+                        if (authWindow.closed) {
+                            clearInterval(checkAuth);
+                            await checkGoogleAuthStatus();
+                        }
+                    }, 1000);
+                } else {
+                    showGoogleError('Failed to get Google authentication URL');
                 }
-                
             } catch (error) {
                 showGoogleError('Error connecting to Google Calendar: ' + error.message);
             }
@@ -968,13 +972,23 @@
         // Disconnect Google Calendar
         document.getElementById('disconnectGoogleBtn').addEventListener('click', async () => {
             try {
-                // Clear authentication state (client-side only)
-                isGoogleAuthenticated = false;
-                document.getElementById('googleAuthSection').classList.remove('hidden');
-                document.getElementById('googleCalendarSection').classList.add('hidden');
-                document.getElementById('addToGoogleBtn').disabled = true;
+                const response = await fetch('/api/auth/google/disconnect', {
+                    method: 'POST'
+                });
                 
-                // No message needed - UI state change is enough feedback
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Clear authentication state
+                    isGoogleAuthenticated = false;
+                    document.getElementById('googleAuthSection').classList.remove('hidden');
+                    document.getElementById('googleCalendarSection').classList.add('hidden');
+                    document.getElementById('addToGoogleBtn').disabled = true;
+                    
+                    // No message needed - UI state change is enough feedback
+                } else {
+                    showGoogleError(data.error || 'Failed to disconnect from Google Calendar');
+                }
             } catch (error) {
                 console.error('Disconnect error:', error);
                 showGoogleError('Error disconnecting from Google Calendar: ' + error.message);
@@ -984,10 +998,13 @@
         // Check Google Calendar authentication status
         async function checkGoogleAuthStatus() {
             try {
+                console.log('Checking Google Calendar authentication status...');
                 const response = await fetch('/api/auth/google/status');
                 const data = await response.json();
+                console.log('Authentication status response:', data);
                 
                 if (data.authenticated) {
+                    console.log('User is authenticated with Google Calendar');
                     isGoogleAuthenticated = true;
                     document.getElementById('googleAuthSection').classList.add('hidden');
                     document.getElementById('googleCalendarSection').classList.remove('hidden');
@@ -1000,9 +1017,11 @@
                         document.getElementById('addToGoogleBtn').disabled = false;
                     }
                 } else {
-                    showGoogleError('Google Calendar authentication failed');
+                    console.log('User is not authenticated with Google Calendar');
+                    // Don't show error message - just log it
                 }
             } catch (error) {
+                console.error('Error checking Google Calendar status:', error);
                 showGoogleError('Error checking Google Calendar status: ' + error.message);
             }
         }
@@ -1029,7 +1048,7 @@
             }
         }
 
-        // Add courses to Google Calendar (client-side only)
+        // Add courses to Google Calendar (server-side with per-user tokens)
         document.getElementById('addToGoogleBtn').addEventListener('click', async () => {
             if (!isGoogleAuthenticated || courses.length === 0) {
                 showGoogleError('Please connect to Google Calendar and load courses first');
@@ -1038,29 +1057,42 @@
             
             const btn = document.getElementById('addToGoogleBtn');
             const originalText = btn.innerHTML;
+            const calendarId = document.getElementById('calendarSelect').value;
             
             try {
-                btn.innerHTML = '<span class="btn-icon">⏳</span>Opening Google Calendar...';
+                btn.innerHTML = '<span class="btn-icon">⏳</span>Adding to Calendar...';
                 btn.disabled = true;
                 
-                // Open Google Calendar for each course individually
-                // This ensures each user adds to their own calendar
-                for (let i = 0; i < courses.length; i++) {
-                    const course = courses[i];
-                    const googleUrl = createSingleCourseGoogleCalendarUrl(course);
-                    
-                    if (googleUrl) {
-                        // Open each course in a new tab (with delay to avoid popup blocking)
-                        setTimeout(() => {
-                            window.open(googleUrl, '_blank');
-                        }, i * 500); // 500ms delay between each
-                    }
+                // Send courses to server to add to Google Calendar
+                const response = await fetch('/api/calendar/events', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        courses: courses.map(course => ({
+                            title: course.title,
+                            days: course.days,
+                            time: course.time,
+                            endTime: course.endTime,
+                            location: course.location,
+                            instructor: course.instructor,
+                            startDate: course.startDate,
+                            endDate: course.endDate
+                        })),
+                        calendarId: calendarId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showGoogleSuccess(`Successfully added ${result.eventsCreated} events to Google Calendar!`);
+                } else {
+                    showGoogleError('Failed to add events to Google Calendar: ' + result.error);
                 }
-                
-                showGoogleSuccess(`Opening ${courses.length} courses in Google Calendar. Please add each one to your calendar.`);
-                
             } catch (error) {
-                showGoogleError('Error opening Google Calendar: ' + error.message);
+                showGoogleError('Error adding events to Google Calendar: ' + error.message);
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
