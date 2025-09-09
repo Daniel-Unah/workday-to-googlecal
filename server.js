@@ -4,6 +4,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs-extra');
+const session = require('express-session');
 require('dotenv').config();
 
 const GoogleCalendarManager = require('./scripts/google-calendar');
@@ -15,6 +16,17 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
+// Session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'workday-to-googlecal-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true in production with HTTPS
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -33,6 +45,47 @@ fs.ensureDirSync('downloads');
  */
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+/**
+ * Disconnect from Google Calendar
+ */
+app.post('/api/auth/google/disconnect', (req, res) => {
+    try {
+        console.log('Disconnect request received');
+        console.log('Session exists:', !!req.session);
+        console.log('Session ID:', req.session?.id);
+        console.log('Has googleTokens:', !!req.session?.googleTokens);
+        
+        // Check if session exists
+        if (!req.session) {
+            console.log('No session found, returning already disconnected');
+            return res.json({ success: true, message: 'Not connected to Google Calendar' });
+        }
+        
+        // Clear the stored tokens
+        if (req.session.googleTokens) {
+            console.log('Clearing googleTokens from session');
+            delete req.session.googleTokens;
+            
+            // Try to save session, but don't fail if it doesn't work
+            req.session.save((err) => {
+                if (err) {
+                    console.error('Error saving session:', err);
+                    // Still return success since we cleared the tokens
+                    return res.json({ success: true, message: 'Disconnected successfully' });
+                }
+                console.log('Session saved successfully');
+                res.json({ success: true, message: 'Disconnected successfully' });
+            });
+        } else {
+            console.log('No googleTokens found, returning not connected');
+            res.json({ success: true, message: 'Not connected to Google Calendar' });
+        }
+    } catch (error) {
+        console.error('Disconnect error:', error);
+        res.status(500).json({ error: 'Failed to disconnect from Google Calendar' });
+    }
 });
 
 /**
