@@ -75,10 +75,6 @@
                 <h3>📅 Google Calendar (Recommended)</h3>
                 <div id="googleAuthSection">
                     <p>Add all courses to your Google Calendar with one click:</p>
-                    <button id="googleAuthBtn" class="btn btn-google">
-                        <span class="btn-icon">🔗</span>
-                        Learn More
-                    </button>
                     <p class="help-text">Each course will open in Google Calendar for you to add to your personal calendar</p>
                 </div>
                 
@@ -904,30 +900,7 @@
         let isGoogleAuthenticated = false;
 
 
-        // Google Calendar authentication
-        document.getElementById('googleAuthBtn').addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/auth/google/url');
-                const data = await response.json();
-                
-                if (data.authUrl) {
-                    // Open Google OAuth in a new window
-                    const authWindow = window.open(data.authUrl, 'google-auth', 'width=500,height=600');
-                    
-                    // Check for authentication completion
-                    const checkAuth = setInterval(async () => {
-                        if (authWindow.closed) {
-                            clearInterval(checkAuth);
-                            await checkGoogleAuthStatus();
-                        }
-                    }, 1000);
-                } else {
-                    showError('Failed to get Google authentication URL');
-                }
-            } catch (error) {
-                showError('Error connecting to Google Calendar: ' + error.message);
-            }
-        });
+        // Google Calendar authentication removed - now client-side only
 
         // Check Google Calendar authentication status
         async function checkGoogleAuthStatus() {
