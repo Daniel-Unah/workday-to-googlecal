@@ -43,10 +43,16 @@ fs.ensureDirSync('downloads');
  * Serve the main application
  */
 app.get('/', (req, res) => {
-    // Serve minified version in production if available
-    if (process.env.NODE_ENV === 'production' && fs.existsSync(path.join(__dirname, 'public', 'index.min.html'))) {
-        res.sendFile(path.join(__dirname, 'public', 'index.min.html'));
+    // Always try to serve minified version first if it exists
+    const minifiedPath = path.join(__dirname, 'public', 'index.min.html');
+    console.log('Checking for minified file at:', minifiedPath);
+    console.log('Minified file exists:', fs.existsSync(minifiedPath));
+    
+    if (fs.existsSync(minifiedPath)) {
+        console.log('✅ Serving minified version');
+        res.sendFile(minifiedPath);
     } else {
+        console.log('⚠️  Serving original version (minified not found)');
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     }
 });
@@ -288,14 +294,27 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Check if minified version exists in production
-if (process.env.NODE_ENV === 'production') {
-    if (fs.existsSync(path.join(__dirname, 'public', 'index.min.html'))) {
-        console.log('✅ Minified version found - serving optimized files');
+// Ensure minified version exists
+const minifiedPath = path.join(__dirname, 'public', 'index.min.html');
+const originalPath = path.join(__dirname, 'public', 'index.html');
+
+// Always try to build minified version on startup
+try {
+    console.log('Building minified version...');
+    const { execSync } = require('child_process');
+    execSync('node scripts/simple-build.js', { stdio: 'inherit' });
+    
+    if (fs.existsSync(minifiedPath)) {
+        const originalSize = fs.statSync(originalPath).size;
+        const minifiedSize = fs.statSync(minifiedPath).size;
+        const reduction = Math.round((1 - minifiedSize / originalSize) * 100);
+        console.log(`✅ Minified version built successfully (${reduction}% reduction)`);
     } else {
-        console.log('⚠️  Minified version not found - serving original files');
-        console.log('   This is normal if minification failed during build');
+        console.log('⚠️  Minified version not created');
     }
+} catch (error) {
+    console.log('⚠️  Failed to build minified version:', error.message);
+    console.log('   Will serve original files');
 }
 
 // Start server
