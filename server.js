@@ -288,6 +288,23 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
+// Build minified version on startup if in production
+if (process.env.NODE_ENV === 'production') {
+    try {
+        console.log('Building minified version for production...');
+        const build = require('./scripts/build');
+        build().then(() => {
+            console.log('✅ Minified version built successfully');
+        }).catch(error => {
+            console.log('⚠️  Minified build failed, using original files:', error.message);
+            console.log('   This is not critical - the app will work with original files');
+        });
+    } catch (error) {
+        console.log('⚠️  Minified build failed, using original files:', error.message);
+        console.log('   This is not critical - the app will work with original files');
+    }
+}
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
