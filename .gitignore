@@ -83,6 +83,10 @@ uploads/
 downloads/
 tokens.json
 
+# Minified files (generated during build)
+public/index.min.html
+public/styles.min.css
+
 # IDE files
 .vscode/
 .idea/

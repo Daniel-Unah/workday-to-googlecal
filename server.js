@@ -43,7 +43,12 @@ fs.ensureDirSync('downloads');
  * Serve the main application
  */
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    // Serve minified version in production if available
+    if (process.env.NODE_ENV === 'production' && fs.existsSync(path.join(__dirname, 'public', 'index.min.html'))) {
+        res.sendFile(path.join(__dirname, 'public', 'index.min.html'));
+    } else {
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    }
 });
 
 /**
