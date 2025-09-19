@@ -197,12 +197,10 @@ class GoogleCalendarManager {
                 description: `Instructor: ${course.instructor || 'TBA'}\nLocation: ${course.location || 'TBA'}`,
                 location: course.location || 'TBA',
                 start: {
-                    dateTime: this.parseDateTime(course.startDate, course.time),
-                    timeZone: 'America/Chicago'
+                    dateTime: this.parseDateTime(course.startDate, course.time)
                 },
                 end: {
-                    dateTime: this.parseDateTime(course.startDate, course.endTime),
-                    timeZone: 'America/Chicago'
+                    dateTime: this.parseDateTime(course.startDate, course.endTime)
                 },
                 recurrence: this.getRecurrenceRule(course.days, course.startDate, course.endDate),
                 reminders: {
@@ -231,22 +229,60 @@ class GoogleCalendarManager {
      */
     parseDateTime(dateStr, timeStr) {
         if (!dateStr || !timeStr) {
-            throw new Error('Date and time are required');
+            console.log('Missing date or time:', { dateStr, timeStr });
+            return null;
         }
-
-        const date = new Date(dateStr);
-        const [time, period] = timeStr.split(' ');
-        const [hours, minutes] = time.split(':');
         
-        let hour24 = parseInt(hours);
-        if (period === 'PM' && hour24 !== 12) {
-            hour24 += 12;
-        } else if (period === 'AM' && hour24 === 12) {
-            hour24 = 0;
+        try {
+            // Parse the date string (should be in YYYY-MM-DD format from Excel)
+            const date = new Date(dateStr);
+            
+            // Parse the time string (e.g., "5:30 PM" or "17:30")
+            const time = this.parseTime(timeStr);
+            if (!time) {
+                console.log('Failed to parse time:', timeStr);
+                return null;
+            }
+            
+            // Create a new date with the parsed time
+            const dateTime = new Date(date);
+            dateTime.setHours(time.hours, time.minutes, 0, 0);
+            
+            // Return in ISO format without timezone conversion
+            return dateTime.toISOString();
+        } catch (error) {
+            console.log('Error parsing date/time:', error);
+            return null;
         }
+    }
 
-        date.setHours(hour24, parseInt(minutes), 0, 0);
-        return date.toISOString();
+    /**
+     * Parse time string into hours and minutes
+     */
+    parseTime(timeStr) {
+        if (!timeStr) return null;
+        
+        try {
+            // Handle both 24-hour and 12-hour formats
+            const isPM = timeStr.toLowerCase().includes('pm');
+            const isAM = timeStr.toLowerCase().includes('am');
+            
+            // Remove AM/PM and extract numbers
+            const time = timeStr.replace(/[^\d:]/g, '');
+            const [hours, minutes] = time.split(':');
+            
+            let hour24 = parseInt(hours) || 9;
+            if (isPM && hour24 < 12) hour24 += 12;
+            if (isAM && hour24 === 12) hour24 = 0;
+            
+            return {
+                hours: hour24,
+                minutes: parseInt(minutes) || 0
+            };
+        } catch (error) {
+            console.log('Error parsing time:', error);
+            return null;
+        }
     }
 
     /**
