@@ -178,17 +178,40 @@ class GoogleCalendarManager {
      */
     async createEventFromCourse(course, calendarId = 'primary') {
         try {
+            console.log('Creating event for course:', course.title);
+            console.log('Course data:', JSON.stringify(course, null, 2));
+            
+            const startDateTime = this.parseDateTime(course.startDate, course.time);
+            const endDateTime = this.parseDateTime(course.startDate, course.endTime);
+            
+            if (!startDateTime || !endDateTime) {
+                throw new Error(`Invalid date/time for course "${course.title}". Start: ${course.startDate} ${course.time}, End: ${course.endDate} ${course.endTime}`);
+            }
+            
+            console.log('Parsed start:', startDateTime);
+            console.log('Parsed end:', endDateTime);
+            
+            const recurrence = this.getRecurrenceRule(course.days, course.startDate, course.endDate);
+            
+            if (!recurrence) {
+                throw new Error(`Invalid recurrence rule for course "${course.title}". Days: ${course.days}`);
+            }
+            
+            console.log('Recurrence rule:', recurrence);
+            
             const event = {
                 summary: course.title,
                 description: `Instructor: ${course.instructor || 'TBA'}\nLocation: ${course.location || 'TBA'}`,
                 location: course.location || 'TBA',
                 start: {
-                    dateTime: this.parseDateTime(course.startDate, course.time)
+                    dateTime: startDateTime,
+                    timeZone: 'America/Chicago'
                 },
                 end: {
-                    dateTime: this.parseDateTime(course.startDate, course.endTime)
+                    dateTime: endDateTime,
+                    timeZone: 'America/Chicago'
                 },
-                recurrence: this.getRecurrenceRule(course.days, course.startDate, course.endDate),
+                recurrence: recurrence,
                 reminders: {
                     useDefault: false,
                     overrides: [
@@ -198,14 +221,19 @@ class GoogleCalendarManager {
                 }
             };
 
+            console.log('Final event object:', JSON.stringify(event, null, 2));
+
             const response = await this.calendar.events.insert({
                 calendarId: calendarId,
                 resource: event
             });
 
+            console.log('Event created successfully:', response.data.id);
             return response.data;
         } catch (error) {
-            console.error('Error creating event:', error);
+            console.error('Error creating event for course:', course.title);
+            console.error('Error details:', error.message);
+            console.error('Full error:', error);
             throw error;
         }
     }
@@ -276,6 +304,7 @@ class GoogleCalendarManager {
      */
     getRecurrenceRule(days, startDate, endDate) {
         if (!days || !startDate || !endDate) {
+            console.error('Missing recurrence data:', { days, startDate, endDate });
             return null;
         }
 
@@ -289,14 +318,23 @@ class GoogleCalendarManager {
             'Sunday': 'SU'
         };
 
-        const dayList = days.split(',').map(day => dayMap[day.trim()]).filter(Boolean);
+        // Split by both "/" and "," to handle different formats like "Monday/Wednesday" or "Monday, Wednesday"
+        const dayList = days.split(/[/,]/).map(day => dayMap[day.trim()]).filter(Boolean);
         
         if (dayList.length === 0) {
+            console.error('No valid days found in:', days);
             return null;
         }
 
         const start = new Date(startDate);
         const end = new Date(endDate);
+        
+        // Validate dates
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+            console.error('Invalid dates:', { startDate, endDate });
+            return null;
+        }
+        
         const until = end.toISOString().split('T')[0].replace(/-/g, '');
 
         return [`RRULE:FREQ=WEEKLY;BYDAY=${dayList.join(',')};UNTIL=${until}`];
