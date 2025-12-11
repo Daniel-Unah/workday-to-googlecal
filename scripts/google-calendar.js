@@ -251,15 +251,14 @@ class GoogleCalendarManager {
                 resource: event
             });
 
-            console.log('Event created successfully:', response.data.id);
-            console.log('Event details:', {
-                id: response.data.id,
-                summary: response.data.summary,
-                start: response.data.start,
-                end: response.data.end,
-                recurrence: response.data.recurrence,
-                htmlLink: response.data.htmlLink
-            });
+            console.log('\n✅ EVENT CREATED SUCCESSFULLY');
+            console.log('   Course:', response.data.summary);
+            console.log('   Event ID:', response.data.id);
+            console.log('   Start Time:', response.data.start.dateTime, '(' + response.data.start.timeZone + ')');
+            console.log('   End Time:', response.data.end.dateTime, '(' + response.data.end.timeZone + ')');
+            console.log('   Recurrence:', response.data.recurrence ? response.data.recurrence[0] : 'None');
+            console.log('   View in Calendar:', response.data.htmlLink);
+            console.log('');
             return response.data;
         } catch (error) {
             console.error('Error creating event for course:', course.title);
@@ -431,6 +430,7 @@ class GoogleCalendarManager {
             const deletedIds = [];
             const errors = [];
             
+            console.log('\n🗑️  DELETING EVENTS...');
             for (const event of events) {
                 try {
                     await this.calendar.events.delete({
@@ -438,12 +438,19 @@ class GoogleCalendarManager {
                         eventId: event.id
                     });
                     deletedIds.push(event.id);
-                    console.log('Deleted event:', event.id, event.summary);
+                    console.log('   ✓ Deleted:', event.summary, '(ID:', event.id + ')');
                 } catch (error) {
-                    console.error('Failed to delete event:', event.id, error.message);
+                    console.error('   ✗ Failed to delete:', event.summary, '(ID:', event.id + ')', '-', error.message);
                     errors.push(`Event "${event.summary}": ${error.message}`);
                 }
             }
+            console.log('');
+            
+            console.log('📊 DELETION SUMMARY:');
+            console.log('   Total found:', events.length);
+            console.log('   Successfully deleted:', deletedIds.length);
+            console.log('   Failed:', errors.length);
+            console.log('');
             
             return { 
                 deletedCount: deletedIds.length, 
