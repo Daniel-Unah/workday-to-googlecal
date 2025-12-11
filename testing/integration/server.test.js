@@ -28,10 +28,23 @@ describe('Server API Integration Tests', () => {
         { id: 'primary', summary: 'Primary Calendar' },
         { id: 'test-calendar', summary: 'Test Calendar' }
       ]),
-      createEvents: jest.fn().mockResolvedValue([
-        { id: 'event-1', status: 'confirmed' },
-        { id: 'event-2', status: 'confirmed' }
-      ])
+      createEvents: jest.fn().mockImplementation((courses, calendarId, batchId) => {
+        return Promise.resolve({
+          events: [
+            { id: 'event-1', status: 'confirmed' },
+            { id: 'event-2', status: 'confirmed' }
+          ],
+          eventIds: ['event-1', 'event-2'],
+          batchId: batchId || 'batch_test_123',
+          errors: []
+        });
+      }),
+      deleteEventsByBatch: jest.fn().mockResolvedValue({
+        deletedCount: 2,
+        totalFound: 2,
+        deletedIds: ['event-1', 'event-2'],
+        errors: []
+      })
     }));
 
     // Import and setup server after mocking
@@ -97,14 +110,42 @@ describe('Server API Integration Tests', () => {
           return res.status(401).json({ error: 'Not authenticated' });
         }
 
-        const { courses, calendarId } = req.body;
+        const { courses, calendarId, batchId } = req.body;
         const manager = new GoogleCalendarManager();
-        const events = await manager.createEvents(courses, calendarId);
+        const result = await manager.createEvents(courses, calendarId, batchId);
         
         res.json({
           success: true,
-          eventsCreated: events.length,
-          events
+          eventsCreated: result.events.length,
+          eventIds: result.eventIds,
+          batchId: result.batchId,
+          events: result.events
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    app.post('/api/calendar/events/delete', async (req, res) => {
+      try {
+        if (!req.session.googleTokens) {
+          return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { batchId, calendarId } = req.body;
+        
+        if (!batchId) {
+          return res.status(400).json({ error: 'Batch ID is required' });
+        }
+
+        const manager = new GoogleCalendarManager();
+        const result = await manager.deleteEventsByBatch(batchId, calendarId);
+        
+        res.json({
+          success: true,
+          deletedCount: result.deletedCount,
+          totalFound: result.totalFound,
+          errors: result.errors
         });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -216,6 +257,106 @@ describe('Server API Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.eventsCreated).toBe(2);
+      expect(response.body.eventIds).toBeDefined();
+      expect(response.body.batchId).toBeDefined();
+      expect(response.body.batchId).toMatch(/^batch_/);
+    });
+
+    it('should accept custom batch ID', async () => {
+      const agent = request.agent(app);
+      
+      // First authenticate
+      await agent.get('/auth/google/callback').query({ code: 'test-code' });
+      
+      const courses = [
+        {
+          title: 'CSCI 101',
+          days: 'Monday/Wednesday',
+          time: '9:00 AM',
+          endTime: '10:15 AM',
+          startDate: '2025-01-13',
+          endDate: '2025-05-02'
+        }
+      ];
+      
+      const customBatchId = 'custom_batch_test';
+      const response = await agent
+        .post('/api/calendar/events')
+        .send({ courses, calendarId: 'primary', batchId: customBatchId });
+      
+      expect(response.status).toBe(200);
+      expect(response.body.batchId).toBe(customBatchId);
+    });
+  });
+
+  describe('POST /api/calendar/events/delete', () => {
+    it('should return 401 when not authenticated', async () => {
+      const response = await request(app)
+        .post('/api/calendar/events/delete')
+        .send({ batchId: 'batch_123' });
+      
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe('Not authenticated');
+    });
+
+    it('should return 400 when batch ID is missing', async () => {
+      const agent = request.agent(app);
+      
+      // First authenticate
+      await agent.get('/auth/google/callback').query({ code: 'test-code' });
+      
+      const response = await agent
+        .post('/api/calendar/events/delete')
+        .send({ calendarId: 'primary' });
+      
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Batch ID is required');
+    });
+
+    it('should delete events when authenticated with valid batch ID', async () => {
+      const agent = request.agent(app);
+      
+      // First authenticate
+      await agent.get('/auth/google/callback').query({ code: 'test-code' });
+      
+      const response = await agent
+        .post('/api/calendar/events/delete')
+        .send({ batchId: 'batch_123', calendarId: 'primary' });
+      
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.deletedCount).toBe(2);
+      expect(response.body.totalFound).toBe(2);
+      expect(response.body.errors).toEqual([]);
+    });
+
+    it('should handle partial deletion with errors', async () => {
+      const agent = request.agent(app);
+      
+      // First authenticate
+      await agent.get('/auth/google/callback').query({ code: 'test-code' });
+      
+      // Temporarily override mock for this test
+      const originalMock = GoogleCalendarManager.mock.results[GoogleCalendarManager.mock.results.length - 1].value;
+      GoogleCalendarManager.mockImplementationOnce(() => ({
+        ...originalMock,
+        deleteEventsByBatch: jest.fn().mockResolvedValue({
+          deletedCount: 1,
+          totalFound: 2,
+          deletedIds: ['event-1'],
+          errors: ['Event "MATH 201": Permission denied']
+        })
+      }));
+      
+      const response = await agent
+        .post('/api/calendar/events/delete')
+        .send({ batchId: 'batch_123', calendarId: 'primary' });
+      
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.deletedCount).toBe(1);
+      expect(response.body.totalFound).toBe(2);
+      expect(response.body.errors).toHaveLength(1);
     });
   });
 });

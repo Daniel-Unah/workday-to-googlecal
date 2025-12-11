@@ -150,24 +150,31 @@ class GoogleCalendarManager {
     /**
      * Create events from courses
      */
-    async createEvents(courses, calendarId = 'primary') {
+    async createEvents(courses, calendarId = 'primary', batchId = null) {
         try {
             this.initOAuth2();
             await this.loadTokens();
             
+            // Generate batch ID if not provided
+            if (!batchId) {
+                batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            }
+            
             const events = [];
             const errors = [];
+            const eventIds = [];
 
             for (const course of courses) {
                 try {
-                    const event = await this.createEventFromCourse(course, calendarId);
+                    const event = await this.createEventFromCourse(course, calendarId, batchId);
                     events.push(event);
+                    eventIds.push(event.id);
                 } catch (error) {
                     errors.push(`Course "${course.title}": ${error.message}`);
                 }
             }
 
-            return { events, errors };
+            return { events, errors, eventIds, batchId };
         } catch (error) {
             throw new Error('Failed to create events');
         }
@@ -176,7 +183,7 @@ class GoogleCalendarManager {
     /**
      * Create a single event from course data
      */
-    async createEventFromCourse(course, calendarId = 'primary') {
+    async createEventFromCourse(course, calendarId = 'primary', batchId = null) {
         try {
             console.log('Creating event for course:', course.title);
             console.log('Course data:', JSON.stringify(course, null, 2));
@@ -212,6 +219,12 @@ class GoogleCalendarManager {
                     timeZone: 'America/Chicago'
                 },
                 recurrence: recurrence,
+                extendedProperties: {
+                    private: {
+                        appSource: 'workday-to-googlecal',
+                        batchId: batchId || 'unknown'
+                    }
+                },
                 reminders: {
                     useDefault: false,
                     overrides: [
@@ -338,6 +351,56 @@ class GoogleCalendarManager {
         const until = end.toISOString().split('T')[0].replace(/-/g, '');
 
         return [`RRULE:FREQ=WEEKLY;BYDAY=${dayList.join(',')};UNTIL=${until}`];
+    }
+
+    /**
+     * Delete all events for a specific batch ID
+     */
+    async deleteEventsByBatch(batchId, calendarId = 'primary') {
+        try {
+            this.initOAuth2();
+            await this.loadTokens();
+            
+            console.log('Searching for events with batchId:', batchId);
+            
+            // Search for events with this batch ID using privateExtendedProperty
+            const response = await this.calendar.events.list({
+                calendarId: calendarId,
+                privateExtendedProperty: `batchId=${batchId}`,
+                maxResults: 100,
+                singleEvents: false // We want recurring event masters
+            });
+            
+            const events = response.data.items || [];
+            console.log(`Found ${events.length} events to delete`);
+            
+            const deletedIds = [];
+            const errors = [];
+            
+            for (const event of events) {
+                try {
+                    await this.calendar.events.delete({
+                        calendarId: calendarId,
+                        eventId: event.id
+                    });
+                    deletedIds.push(event.id);
+                    console.log('Deleted event:', event.id, event.summary);
+                } catch (error) {
+                    console.error('Failed to delete event:', event.id, error.message);
+                    errors.push(`Event "${event.summary}": ${error.message}`);
+                }
+            }
+            
+            return { 
+                deletedCount: deletedIds.length, 
+                deletedIds,
+                errors,
+                totalFound: events.length
+            };
+        } catch (error) {
+            console.error('Error deleting events by batch:', error);
+            throw new Error('Failed to delete events: ' + error.message);
+        }
     }
 }
 

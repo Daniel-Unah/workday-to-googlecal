@@ -1,6 +1,7 @@
 let courses = [];
 let currentTimezone = 'America/Chicago';
 let isGoogleAuthenticated = false;
+let currentBatchId = null; // Track the current batch of added events
 
 // File input handling
 document.getElementById('fileInput').addEventListener('change', function(e) {
@@ -922,6 +923,9 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
     const originalText = btn.innerHTML;
     const calendarId = document.getElementById('calendarSelect').value;
     
+    // Generate a unique batch ID for this set of events
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
         btn.innerHTML = '<span class="btn-icon">⏳</span>Adding to Calendar...';
         btn.disabled = true;
@@ -943,6 +947,64 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
                     startDate: course.startDate,
                     endDate: course.endDate
                 })),
+                calendarId: calendarId,
+                batchId: batchId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Store the batch ID for deletion
+            currentBatchId = result.batchId;
+            
+            showGoogleSuccess(`Successfully added ${result.eventsCreated} events to Google Calendar!`);
+            
+            // Show the delete button
+            const deleteBtn = document.getElementById('removeEventsBtn');
+            if (deleteBtn) {
+                deleteBtn.classList.remove('hidden');
+                deleteBtn.disabled = false;
+            }
+        } else {
+            showGoogleError('Failed to add events to Google Calendar: ' + result.error);
+        }
+    } catch (error) {
+        showGoogleError('Error adding events to Google Calendar: ' + error.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+});
+
+// Remove added events from Google Calendar
+document.getElementById('removeEventsBtn').addEventListener('click', async () => {
+    if (!isGoogleAuthenticated || !currentBatchId) {
+        showGoogleError('No events to remove');
+        return;
+    }
+    
+    const confirmation = confirm('Are you sure you want to remove all added events from Google Calendar? This cannot be undone.');
+    if (!confirmation) {
+        return;
+    }
+    
+    const btn = document.getElementById('removeEventsBtn');
+    const originalText = btn.innerHTML;
+    const calendarId = document.getElementById('calendarSelect').value;
+    
+    try {
+        btn.innerHTML = '<span class="btn-icon">⏳</span>Removing Events...';
+        btn.disabled = true;
+        
+        // Send delete request to server
+        const response = await fetch('/api/calendar/events/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                batchId: currentBatchId,
                 calendarId: calendarId
             })
         });
@@ -950,12 +1012,16 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
         const result = await response.json();
         
         if (result.success) {
-            showGoogleSuccess(`Successfully added ${result.eventsCreated} events to Google Calendar!`);
+            showGoogleSuccess(`Successfully removed ${result.deletedCount} events from Google Calendar!`);
+            
+            // Hide the delete button and clear batch ID
+            btn.classList.add('hidden');
+            currentBatchId = null;
         } else {
-            showGoogleError('Failed to add events to Google Calendar: ' + result.error);
+            showGoogleError('Failed to remove events: ' + result.error);
         }
     } catch (error) {
-        showGoogleError('Error adding events to Google Calendar: ' + error.message);
+        showGoogleError('Error removing events: ' + error.message);
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;

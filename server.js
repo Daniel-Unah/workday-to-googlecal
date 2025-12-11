@@ -190,22 +190,54 @@ app.post('/api/calendar/events', async (req, res) => {
             return res.status(401).json({ error: 'Not authenticated' });
         }
         
-        const { courses, calendarId = 'primary' } = req.body;
+        const { courses, calendarId = 'primary', batchId } = req.body;
         
         if (!courses || !Array.isArray(courses)) {
             return res.status(400).json({ error: 'Courses data is required' });
         }
 
         const calendarManager = new GoogleCalendarManager(req.session.userId);
-        const result = await calendarManager.createEvents(courses, calendarId);
+        const result = await calendarManager.createEvents(courses, calendarId, batchId);
         
         res.json({
             success: true,
             eventsCreated: result.events.length,
+            eventIds: result.eventIds,
+            batchId: result.batchId,
             errors: result.errors
         });
     } catch (error) {
         console.error('Error creating events:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Delete events by batch ID
+ */
+app.post('/api/calendar/events/delete', async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+        
+        const { batchId, calendarId = 'primary' } = req.body;
+        
+        if (!batchId) {
+            return res.status(400).json({ error: 'Batch ID is required' });
+        }
+
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
+        const result = await calendarManager.deleteEventsByBatch(batchId, calendarId);
+        
+        res.json({
+            success: true,
+            deletedCount: result.deletedCount,
+            totalFound: result.totalFound,
+            errors: result.errors
+        });
+    } catch (error) {
+        console.error('Error deleting events:', error);
         res.status(500).json({ error: error.message });
     }
 });

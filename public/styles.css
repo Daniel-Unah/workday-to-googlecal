@@ -482,6 +482,23 @@ h2 {
     transform: none;
 }
 
+.btn-danger {
+    background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+    transform: translateY(-2px);
+}
+
+.btn-danger:disabled {
+    background: #a0aec0;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .btn-primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;

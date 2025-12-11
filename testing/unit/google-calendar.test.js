@@ -245,4 +245,178 @@ describe('GoogleCalendarManager', () => {
       expect(calendars[1].id).toBe('test-calendar-id');
     });
   });
+
+  describe('createEvents', () => {
+    beforeEach(() => {
+      manager.initOAuth2();
+      manager.oauth2Client.setCredentials({
+        access_token: 'mock-access-token',
+        refresh_token: 'mock-refresh-token'
+      });
+    });
+
+    it('should create multiple events and return batch ID', async () => {
+      const courses = [
+        {
+          title: 'CSCI 101',
+          days: 'Monday/Wednesday',
+          time: '9:00 AM',
+          endTime: '10:15 AM',
+          startDate: '2025-01-13',
+          endDate: '2025-05-02',
+          instructor: 'Dr. Smith',
+          location: 'Room 101'
+        },
+        {
+          title: 'MATH 201',
+          days: 'Tuesday/Thursday',
+          time: '11:00 AM',
+          endTime: '12:15 PM',
+          startDate: '2025-01-14',
+          endDate: '2025-05-03',
+          instructor: 'Dr. Johnson',
+          location: 'Room 202'
+        }
+      ];
+
+      const result = await manager.createEvents(courses, 'primary');
+      
+      expect(result.events).toHaveLength(2);
+      expect(result.eventIds).toHaveLength(2);
+      expect(result.batchId).toBeDefined();
+      expect(result.batchId).toMatch(/^batch_/);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('should accept custom batch ID', async () => {
+      const courses = [
+        {
+          title: 'CSCI 101',
+          days: 'Monday',
+          time: '9:00 AM',
+          endTime: '10:15 AM',
+          startDate: '2025-01-13',
+          endDate: '2025-05-02'
+        }
+      ];
+      
+      const customBatchId = 'custom_batch_123';
+      const result = await manager.createEvents(courses, 'primary', customBatchId);
+      
+      expect(result.batchId).toBe(customBatchId);
+    });
+
+    it('should handle errors for individual courses', async () => {
+      const courses = [
+        {
+          title: 'Valid Course',
+          days: 'Monday',
+          time: '9:00 AM',
+          endTime: '10:15 AM',
+          startDate: '2025-01-13',
+          endDate: '2025-05-02'
+        },
+        {
+          title: 'Invalid Course',
+          days: null,
+          time: '9:00 AM',
+          endTime: '10:15 AM',
+          startDate: '2025-01-13',
+          endDate: '2025-05-02'
+        }
+      ];
+
+      const result = await manager.createEvents(courses, 'primary');
+      
+      expect(result.events).toHaveLength(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('Invalid Course');
+    });
+  });
+
+  describe('deleteEventsByBatch', () => {
+    beforeEach(() => {
+      manager.initOAuth2();
+      manager.oauth2Client.setCredentials({
+        access_token: 'mock-access-token',
+        refresh_token: 'mock-refresh-token'
+      });
+    });
+
+    it('should delete all events with matching batch ID', async () => {
+      // Mock the events.list response
+      manager.calendar.events.list = jest.fn().mockResolvedValue({
+        data: {
+          items: [
+            { id: 'event-1', summary: 'CSCI 101' },
+            { id: 'event-2', summary: 'MATH 201' }
+          ]
+        }
+      });
+
+      // Mock the events.delete response
+      manager.calendar.events.delete = jest.fn().mockResolvedValue({});
+
+      const result = await manager.deleteEventsByBatch('batch_123', 'primary');
+
+      expect(result.deletedCount).toBe(2);
+      expect(result.totalFound).toBe(2);
+      expect(result.deletedIds).toEqual(['event-1', 'event-2']);
+      expect(result.errors).toEqual([]);
+      expect(manager.calendar.events.list).toHaveBeenCalledWith({
+        calendarId: 'primary',
+        privateExtendedProperty: 'batchId=batch_123',
+        maxResults: 100,
+        singleEvents: false
+      });
+      expect(manager.calendar.events.delete).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle empty result when no events found', async () => {
+      manager.calendar.events.list = jest.fn().mockResolvedValue({
+        data: {
+          items: []
+        }
+      });
+
+      const result = await manager.deleteEventsByBatch('batch_nonexistent', 'primary');
+
+      expect(result.deletedCount).toBe(0);
+      expect(result.totalFound).toBe(0);
+      expect(result.deletedIds).toEqual([]);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('should collect errors for failed deletions', async () => {
+      manager.calendar.events.list = jest.fn().mockResolvedValue({
+        data: {
+          items: [
+            { id: 'event-1', summary: 'CSCI 101' },
+            { id: 'event-2', summary: 'MATH 201' }
+          ]
+        }
+      });
+
+      // Mock first deletion to succeed, second to fail
+      manager.calendar.events.delete = jest.fn()
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new Error('Permission denied'));
+
+      const result = await manager.deleteEventsByBatch('batch_123', 'primary');
+
+      expect(result.deletedCount).toBe(1);
+      expect(result.totalFound).toBe(2);
+      expect(result.deletedIds).toEqual(['event-1']);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('MATH 201');
+      expect(result.errors[0]).toContain('Permission denied');
+    });
+
+    it('should throw error when API call fails', async () => {
+      manager.calendar.events.list = jest.fn().mockRejectedValue(new Error('API Error'));
+
+      await expect(manager.deleteEventsByBatch('batch_123', 'primary'))
+        .rejects.toThrow('Failed to delete events');
+    });
+  });
 });
