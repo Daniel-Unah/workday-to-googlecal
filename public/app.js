@@ -788,13 +788,49 @@ document.getElementById('googleAuthBtn').addEventListener('click', async () => {
             // Open Google OAuth in a new window
             const authWindow = window.open(data.authUrl, 'google-auth', 'width=500,height=600');
             
-            // Check for authentication completion
-            const checkAuth = setInterval(async () => {
-                if (authWindow.closed) {
-                    clearInterval(checkAuth);
+            // Show a message to user
+            showGoogleSuccess('Authentication window opened. Please complete the authorization and then click "Check Connection Status" below.');
+            
+            // Add a "Check Status" button if it doesn't exist
+            let checkStatusBtn = document.getElementById('checkAuthStatusBtn');
+            if (!checkStatusBtn) {
+                checkStatusBtn = document.createElement('button');
+                checkStatusBtn.id = 'checkAuthStatusBtn';
+                checkStatusBtn.className = 'btn btn-primary';
+                checkStatusBtn.style.marginTop = '10px';
+                checkStatusBtn.innerHTML = '<span class="btn-icon">🔄</span>Check Connection Status';
+                checkStatusBtn.addEventListener('click', async () => {
                     await checkGoogleAuthStatus();
+                    // Remove the button if authenticated
+                    if (isGoogleAuthenticated) {
+                        checkStatusBtn.remove();
+                    }
+                });
+                document.getElementById('googleAuthSection').appendChild(checkStatusBtn);
+            }
+            
+            // Try to detect when window closes (but handle the error)
+            const checkAuth = setInterval(() => {
+                try {
+                    if (authWindow && authWindow.closed) {
+                        clearInterval(checkAuth);
+                        // Auto-check status after a short delay
+                        setTimeout(async () => {
+                            await checkGoogleAuthStatus();
+                            if (isGoogleAuthenticated && checkStatusBtn) {
+                                checkStatusBtn.remove();
+                            }
+                        }, 1000);
+                    }
+                } catch (e) {
+                    // Silently ignore COOP errors
                 }
             }, 1000);
+            
+            // Stop checking after 5 minutes
+            setTimeout(() => {
+                clearInterval(checkAuth);
+            }, 5 * 60 * 1000);
         } else {
             showGoogleError('Failed to get Google authentication URL');
         }
