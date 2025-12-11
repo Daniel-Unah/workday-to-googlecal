@@ -252,6 +252,14 @@ class GoogleCalendarManager {
             });
 
             console.log('Event created successfully:', response.data.id);
+            console.log('Event details:', {
+                id: response.data.id,
+                summary: response.data.summary,
+                start: response.data.start,
+                end: response.data.end,
+                recurrence: response.data.recurrence,
+                htmlLink: response.data.htmlLink
+            });
             return response.data;
         } catch (error) {
             console.error('Error creating event for course:', course.title);
@@ -263,6 +271,7 @@ class GoogleCalendarManager {
 
     /**
      * Parse date and time into ISO string
+     * Accounts for user's local timezone
      */
     parseDateTime(dateStr, timeStr) {
         if (!dateStr || !timeStr) {
@@ -271,24 +280,59 @@ class GoogleCalendarManager {
         }
         
         try {
-            // Parse the date string (should be in YYYY-MM-DD format from Excel)
-            const date = new Date(dateStr);
-            
-            // Parse the time string (e.g., "5:30 PM" or "17:30")
+            // Parse the time string first
             const time = this.parseTime(timeStr);
             if (!time) {
                 console.log('Failed to parse time:', timeStr);
                 return null;
             }
             
-            // Create a new date with the parsed time
-            const dateTime = new Date(date);
-            dateTime.setHours(time.hours, time.minutes, 0, 0);
+            // Handle different date formats
+            let year, month, day;
             
-            // Return in ISO format without timezone conversion
-            return dateTime.toISOString();
+            if (typeof dateStr === 'number') {
+                // Numeric serial date - shouldn't happen but handle it
+                const date = new Date(dateStr);
+                year = date.getFullYear();
+                month = date.getMonth() + 1;
+                day = date.getDate();
+            } else if (dateStr.includes('-')) {
+                // YYYY-MM-DD format
+                const parts = dateStr.split('-').map(Number);
+                [year, month, day] = parts;
+            } else if (dateStr.includes('/')) {
+                // M/D/YY or M/D/YYYY format
+                const parts = dateStr.split('/').map(Number);
+                if (parts.length === 3) {
+                    [month, day, year] = parts;
+                    // Handle 2-digit years
+                    if (year < 100) {
+                        year += (year < 30) ? 2000 : 1900;
+                    }
+                }
+            } else {
+                // Try to parse as is
+                const date = new Date(dateStr);
+                if (!isNaN(date.getTime())) {
+                    year = date.getFullYear();
+                    month = date.getMonth() + 1;
+                    day = date.getDate();
+                }
+            }
+            
+            if (!year || !month || !day) {
+                console.error('Invalid date parsed:', dateStr);
+                return null;
+            }
+            
+            // Format as ISO 8601 without Z suffix (NOT UTC)
+            // This tells Google Calendar to interpret the time as-is in the specified timeZone
+            const isoLocal = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}:00`;
+            console.log(`Parsed: ${dateStr} ${timeStr} -> Formatted for CST: ${isoLocal}`);
+            
+            return isoLocal;
         } catch (error) {
-            console.log('Error parsing date/time:', error);
+            console.error('Error parsing date/time:', error);
             return null;
         }
     }
