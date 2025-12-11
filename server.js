@@ -43,18 +43,7 @@ fs.ensureDirSync('downloads');
  * Serve the main application
  */
 app.get('/', (req, res) => {
-    // Always try to serve minified version first if it exists
-    const minifiedPath = path.join(__dirname, 'public', 'index.min.html');
-    console.log('Checking for minified file at:', minifiedPath);
-    console.log('Minified file exists:', fs.existsSync(minifiedPath));
-    
-    if (fs.existsSync(minifiedPath)) {
-        console.log('✅ Serving minified version');
-        res.sendFile(minifiedPath);
-    } else {
-        console.log('⚠️  Serving original version (minified not found)');
-        res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    }
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 /**
@@ -293,29 +282,6 @@ app.use((err, req, res, next) => {
     console.error('Server error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
-
-// Ensure minified version exists
-const minifiedPath = path.join(__dirname, 'public', 'index.min.html');
-const originalPath = path.join(__dirname, 'public', 'index.html');
-
-// Always try to build minified version on startup
-try {
-    console.log('Building minified version...');
-    const { execSync } = require('child_process');
-    execSync('node scripts/simple-build.js', { stdio: 'inherit' });
-    
-    if (fs.existsSync(minifiedPath)) {
-        const originalSize = fs.statSync(originalPath).size;
-        const minifiedSize = fs.statSync(minifiedPath).size;
-        const reduction = Math.round((1 - minifiedSize / originalSize) * 100);
-        console.log(`✅ Minified version built successfully (${reduction}% reduction)`);
-    } else {
-        console.log('⚠️  Minified version not created');
-    }
-} catch (error) {
-    console.log('⚠️  Failed to build minified version:', error.message);
-    console.log('   Will serve original files');
-}
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
