@@ -1,0 +1,938 @@
+let courses = [];
+let currentTimezone = 'America/Chicago';
+let isGoogleAuthenticated = false;
+
+// File input handling
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        hideMessages();
+        parseExcelFile(file);
+    }
+});
+
+// Download button handling
+document.getElementById('downloadBtn').addEventListener('click', function() {
+    downloadICS(courses);
+});
+
+function parseExcelFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            // Try multiple parsing methods
+            let jsonData = [];
+            
+            // Method 1: Standard parsing
+            jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1, defval: '', raw: false});
+            
+            // Method 2: If we get empty or single row, try different options
+            if (jsonData.length < 2) {
+                jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1, defval: '', raw: true});
+            }
+            
+            // Method 3: Try parsing as CSV
+            if (jsonData.length < 2) {
+                const csv = XLSX.utils.sheet_to_csv(worksheet);
+                jsonData = csv.split('\n').map(row => row.split(','));
+            }
+            
+            // Method 4: Try parsing with expanded range
+            if (jsonData.length < 2) {
+                // Find the actual range by looking at all cells
+                let maxRow = 0;
+                let maxCol = 0;
+                
+                Object.keys(worksheet).forEach(key => {
+                    if (key.startsWith('!')) return; // Skip metadata
+                    const cellRef = XLSX.utils.decode_cell(key);
+                    maxRow = Math.max(maxRow, cellRef.r);
+                    maxCol = Math.max(maxCol, cellRef.c);
+                });
+                
+                // Create expanded range
+                const range = {s: {r: 0, c: 0}, e: {r: maxRow, c: maxCol}};
+                
+                jsonData = [];
+                for (let R = range.s.r; R <= range.e.r; ++R) {
+                    const row = [];
+                    for (let C = range.s.c; C <= range.e.c; ++C) {
+                        const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+                        const cell = worksheet[cellAddress];
+                        row.push(cell ? cell.v : '');
+                    }
+                    jsonData.push(row);
+                }
+            }
+            
+            courses = parseWorkdayData(jsonData);
+            
+            if (courses.length === 0) {
+                showError('No courses found. The Excel file might be in an unsupported format. Please try saving it as a different Excel format (.xlsx) or check the browser console for debugging info.');
+                return;
+            }
+            
+            displayPreview(courses);
+            document.getElementById('downloadBtn').disabled = false;
+            
+            // Enable Google Calendar button if authenticated
+            if (isGoogleAuthenticated) {
+                document.getElementById('addToGoogleBtn').disabled = false;
+            }
+            
+            showSuccess(`Successfully parsed ${courses.length} courses!`);
+            
+        } catch (error) {
+            console.error('Error parsing Excel:', error);
+            showError('Error reading Excel file: ' + error.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function parseWorkdayData(data) {
+    if (data.length < 2) {
+        return [];
+    }
+    
+    // Find header row (look for common column names)
+    let headerRow = 0;
+    
+    // Try to find the right row with headers - look for the row with both "Meeting Patterns" and "Instructor"
+    for (let i = 0; i < Math.min(10, data.length); i++) {
+        const row = data[i] || [];
+        
+        // Look for a row that has both "Meeting Patterns" and "Instructor" columns
+        const hasMeetingPatterns = row.some(cell => 
+            cell && typeof cell === 'string' && 
+            cell.toLowerCase().includes('meeting patterns')
+        );
+        const hasInstructor = row.some(cell => 
+            cell && typeof cell === 'string' && 
+            cell.toLowerCase().includes('instructor')
+        );
+        const hasCourseListing = row.some(cell => 
+            cell && typeof cell === 'string' && 
+            cell.toLowerCase().includes('course listing')
+        );
+        
+        if (hasMeetingPatterns && hasInstructor && hasCourseListing) {
+            headerRow = i;
+            break;
+        }
+    }
+    
+    const headers = data[headerRow] || [];
+    
+    const courses = [];
+    
+    // Map Workday-specific column names
+    const columnMap = {
+        courseListing: findColumn(headers, ['course listing', 'course', 'subject', 'class', 'name', 'title']),
+        meetingPatterns: findColumn(headers, ['meeting patterns', 'enrolled sections meeting patterns', 'schedule', 'days', 'time']),
+        instructor: findColumn(headers, ['instructor', 'professor', 'teacher', 'staff']),
+        startDate: findColumn(headers, ['start date', 'start']),
+        endDate: findColumn(headers, ['end date', 'end']),
+        registrationStatus: findColumn(headers, ['registration status', 'status', 'enrollment status'])
+    };
+    
+    // Parse each row
+    for (let i = headerRow + 1; i < data.length; i++) {
+        const row = data[i] || [];
+        if (row.every(cell => !cell)) continue; // Skip empty rows
+        
+        
+        // Extract course name from Course Listing column
+        const courseListing = getCellValue(row, columnMap.courseListing) || '';
+        
+        // Skip rows with empty or invalid course listings
+        if (!courseListing || courseListing.trim() === '' || courseListing === 'Course Listing' || courseListing === '13') {
+            continue;
+        }
+        
+        const courseName = extractCourseName(courseListing);
+        
+        // Extract meeting info from Meeting Patterns column
+        const meetingPatterns = getCellValue(row, columnMap.meetingPatterns) || '';
+        const meetingInfo = parseMeetingPatterns(meetingPatterns);
+        
+        // Get instructor
+        const instructor = getCellValue(row, columnMap.instructor) || '';
+        
+        // Get registration status
+        const registrationStatus = getCellValue(row, columnMap.registrationStatus);
+        
+        // Extract and convert dates from Excel serial numbers
+        const startDateSerial = getCellValue(row, columnMap.startDate);
+        const endDateSerial = getCellValue(row, columnMap.endDate);
+        
+        // Convert Excel serial numbers to dates
+        const startDate = startDateSerial ? convertExcelDate(startDateSerial) : null;
+        const endDate = endDateSerial ? convertExcelDate(endDateSerial) : null;
+        
+        const course = {
+            id: courses.length + 1,
+            title: courseName || 'Untitled Event',
+            days: meetingInfo.days || 'Monday',
+            time: meetingInfo.startTime || '09:00',
+            endTime: meetingInfo.endTime || '10:00',
+            location: meetingInfo.location || '',
+            instructor: instructor,
+            registrationStatus: registrationStatus,
+            startDate: startDate,
+            endDate: endDate
+        };
+        
+        // Only add if it's a valid course
+        if (isValidCourse(course, row)) {
+            courses.push(course);
+        }
+    }
+    
+    return courses;
+}
+
+function extractCourseName(courseListing) {
+    // Extract course name from strings like "CSE 4501 - Video Game Programming II"
+    if (!courseListing || courseListing.trim() === '') {
+        return 'Untitled Course';
+    }
+    
+    // Check if it looks like a course code (e.g., "CSE 4501 - Video Game Programming II")
+    const match = courseListing.match(/([A-Z]{2,4}\s+\d{4})\s*-\s*(.+?)(?:\s*-\s*Fall|$)/);
+    if (match) {
+        return `${match[1]} - ${match[2]}`;
+    }
+    
+    // If it doesn't match the pattern, return as-is
+    return courseListing;
+}
+
+function isNavigationOrHeader(title) {
+    // Filter out navigation elements, headers, and non-course content
+    const navigationTerms = [
+        'calendar view',
+        'edit registration', 
+        'my enrolled courses',
+        'my dropped',
+        'withdrawn courses',
+        'enrolled credit hours',
+        'full-time',
+        'part-time',
+        'view my courses',
+        'academic year',
+        'semester',
+        'term',
+        'student information',
+        'registration',
+        'schedule',
+        'courses',
+        'academic',
+        'undergraduate',
+        'graduate',
+        'bachelor',
+        'master',
+        'doctor',
+        'school of',
+        'department',
+        'college',
+        'university',
+        'active',
+        'inactive',
+        'status',
+        'credit',
+        'hours',
+        'gpa',
+        'grade',
+        'transcript'
+    ];
+    
+    const lowerTitle = title.toLowerCase();
+    
+    // Check if title contains navigation terms
+    for (const term of navigationTerms) {
+        if (lowerTitle.includes(term)) {
+            return true;
+        }
+    }
+    
+    // Check if it's a student info line (contains student name and ID)
+    if (lowerTitle.includes('(') && lowerTitle.includes(')') && 
+        (lowerTitle.includes('student') || lowerTitle.includes('undergraduate') || lowerTitle.includes('graduate'))) {
+        return true;
+    }
+    
+    // Check if it's just a date or number
+    if (/^\d+$/.test(title.trim()) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(title.trim())) {
+        return true;
+    }
+    
+    return false;
+}
+
+function isValidCourse(course, row) {
+    // Check if this is a valid course (not dropped, has proper format, etc.)
+    
+    // Must have a course code pattern (like CSE 4501, BIOL 3100, etc.)
+    const courseCodePattern = /^[A-Z]{2,4}\s+\d{4}/;
+    if (!courseCodePattern.test(course.title)) {
+        return false;
+    }
+    
+    // If it has a valid course code at the start, it's a valid course
+    // Don't check for navigation/header terms since they can appear in legitimate course names
+    
+    // Check registration status - filter out unregistered/dropped classes
+    const registrationStatus = course.registrationStatus || '';
+    
+    if (registrationStatus.toLowerCase().includes('unregistered') || 
+        registrationStatus.toLowerCase().includes('dropped') ||
+        registrationStatus.toLowerCase().includes('withdrawn')) {
+        return false;
+    }
+    
+    return true;
+}
+
+function parseMeetingPatterns(meetingPatterns) {
+    // Parse strings like "Mon/Wed | 5:30 PM - 7:00 PM | RIDGLEY, Room 00016"
+    const parts = meetingPatterns.split('|').map(p => p.trim());
+    
+    let days = 'Monday';
+    let startTime = '09:00';
+    let endTime = '10:00';
+    let location = '';
+    
+    if (parts.length >= 1) {
+        // Parse days
+        const dayStr = parts[0];
+        
+        // Handle multiple days like "Mon/Wed"
+        if (dayStr.includes('/')) {
+            const dayParts = dayStr.split('/');
+            const dayNames = [];
+            dayParts.forEach(part => {
+                if (part.includes('Mon')) dayNames.push('Monday');
+                if (part.includes('Tue')) dayNames.push('Tuesday');
+                if (part.includes('Wed')) dayNames.push('Wednesday');
+                if (part.includes('Thu')) dayNames.push('Thursday');
+                if (part.includes('Fri')) dayNames.push('Friday');
+                if (part.includes('Sat')) dayNames.push('Saturday');
+                if (part.includes('Sun')) dayNames.push('Sunday');
+            });
+            days = dayNames.join('/');
+        } else {
+            // Single day
+            if (dayStr.includes('Mon')) days = 'Monday';
+            if (dayStr.includes('Tue')) days = 'Tuesday';
+            if (dayStr.includes('Wed')) days = 'Wednesday';
+            if (dayStr.includes('Thu')) days = 'Thursday';
+            if (dayStr.includes('Fri')) days = 'Friday';
+            if (dayStr.includes('Sat')) days = 'Saturday';
+            if (dayStr.includes('Sun')) days = 'Sunday';
+        }
+    }
+    
+    if (parts.length >= 2) {
+        // Parse time
+        const timeStr = parts[1];
+        if (!timeStr) {
+            return { days, startTime, endTime, location };
+        }
+        const timeMatch = timeStr.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/);
+        if (timeMatch) {
+            startTime = timeMatch[1];
+            endTime = timeMatch[2];
+        }
+    }
+    
+    if (parts.length >= 3) {
+        // Parse location
+        location = parts[2];
+    }
+    
+    return { days, startTime, endTime, location };
+}
+
+function findColumn(headers, keywords) {
+    for (let i = 0; i < headers.length; i++) {
+        const header = (headers[i] || '').toString().toLowerCase().trim();
+        if (keywords.some(keyword => header.includes(keyword.toLowerCase()))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function getCellValue(row, columnIndex) {
+    if (columnIndex === -1 || !row[columnIndex]) return '';
+    return row[columnIndex].toString().trim();
+}
+
+function convertExcelDate(excelSerial) {
+    // Excel serial numbers start from 1900-01-01 (serial 1)
+    // But Excel incorrectly treats 1900 as a leap year, so we need to adjust
+    const excelEpoch = new Date(1900, 0, 1); // January 1, 1900
+    const serial = parseFloat(excelSerial);
+    
+    if (isNaN(serial)) return null;
+    
+    // Excel serial numbers are days since 1900-01-01
+    // But Excel has a bug where it treats 1900 as a leap year
+    // So we need to subtract 2 days for dates after 1900-02-28
+    let adjustedSerial = serial;
+    if (serial > 59) { // After 1900-02-28
+        adjustedSerial = serial - 2;
+    }
+    
+    const date = new Date(excelEpoch.getTime() + (adjustedSerial - 1) * 24 * 60 * 60 * 1000);
+    return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+}
+
+function displayPreview(courses) {
+    const preview = document.getElementById('preview');
+    
+    let html = `
+        <h3 style="margin: 20px 0 15px 0; color: #4a5568;">Found ${courses.length} courses:</h3>
+        <table class="preview-table">
+            <thead>
+                <tr>
+                    <th>Course</th>
+                    <th>Days</th>
+                    <th>Time</th>
+                    <th>Location</th>
+                    <th>Instructor</th>
+                    <th>Add to Calendar</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    courses.forEach((course, index) => {
+        html += `
+            <tr>
+                <td><strong>${course.title}</strong></td>
+                <td>${course.days}</td>
+                <td>${course.time} - ${course.endTime}</td>
+                <td>${course.location}</td>
+                <td>${course.instructor}</td>
+                <td>
+                    <button class="google-calendar-btn" 
+                            data-title="${course.title.replace(/"/g, '&quot;')}"
+                            data-days="${course.days.replace(/"/g, '&quot;')}"
+                            data-time="${course.time.replace(/"/g, '&quot;')}"
+                            data-end-time="${course.endTime.replace(/"/g, '&quot;')}"
+                            data-location="${course.location.replace(/"/g, '&quot;')}"
+                            data-instructor="${course.instructor.replace(/"/g, '&quot;')}"
+                            style="background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; width: 100%; max-width: 150px;">
+                        Add to Google Calendar
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table>';
+    preview.innerHTML = html;
+    
+    // Add event listeners to the Google Calendar buttons
+    document.querySelectorAll('.google-calendar-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const course = {
+                title: this.getAttribute('data-title'),
+                days: this.getAttribute('data-days'),
+                time: this.getAttribute('data-time'),
+                endTime: this.getAttribute('data-end-time'),
+                location: this.getAttribute('data-location'),
+                instructor: this.getAttribute('data-instructor')
+            };
+            openSingleCourseInGoogleCalendar(course);
+        });
+    });
+}
+
+function downloadICS(courses) {
+    try {
+        let icsContent = 'BEGIN:VCALENDAR\n';
+        icsContent += 'VERSION:2.0\n';
+        icsContent += 'PRODID:-//Workday Converter//EN\n';
+        icsContent += 'CALSCALE:GREGORIAN\n';
+        icsContent += 'METHOD:PUBLISH\n';
+        
+        courses.forEach(course => {
+            const eventId = 'workday-event-' + course.id + '@workday-converter.com';
+            const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            
+            // Create a sample date (you might want to make this more sophisticated)
+            const sampleDate = new Date();
+            sampleDate.setDate(sampleDate.getDate() + 1); // Tomorrow
+            const dateStr = sampleDate.toISOString().split('T')[0].replace(/-/g, '');
+            
+            icsContent += 'BEGIN:VEVENT\n';
+            icsContent += 'UID:' + eventId + '\n';
+            icsContent += 'DTSTAMP:' + now + '\n';
+            icsContent += 'DTSTART:' + dateStr + 'T' + formatTimeForICS(course.time) + '\n';
+            icsContent += 'DTEND:' + dateStr + 'T' + formatTimeForICS(course.endTime) + '\n';
+            icsContent += 'SUMMARY:' + escapeICS(course.title) + '\n';
+            icsContent += 'RRULE:FREQ=WEEKLY;BYDAY=' + getRRuleDays(course.days) + '\n';
+            
+            if (course.location) {
+                icsContent += 'LOCATION:' + escapeICS(course.location) + '\n';
+            }
+            
+            if (course.instructor) {
+                icsContent += 'DESCRIPTION:Instructor: ' + escapeICS(course.instructor) + '\n';
+            }
+            
+            icsContent += 'END:VEVENT\n';
+        });
+        
+        icsContent += 'END:VCALENDAR';
+        
+        // Download the file
+        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'workday-schedule.ics';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        showSuccess('Calendar file downloaded successfully!');
+        
+    } catch (error) {
+        showError('Error generating calendar file: ' + error.message);
+    }
+}
+
+function formatTimeForICS(timeStr) {
+    // Convert time like "09:00" or "9:00 AM" to "090000"
+    let time = timeStr.toString().trim();
+    
+    // Handle AM/PM
+    const isPM = time.toLowerCase().includes('pm');
+    const isAM = time.toLowerCase().includes('am');
+    
+    // Remove AM/PM and extract numbers
+    time = time.replace(/[^\d:]/g, '');
+    const [hours, minutes] = time.split(':');
+    
+    let hour24 = parseInt(hours) || 9;
+    if (isPM && hour24 < 12) hour24 += 12;
+    if (isAM && hour24 === 12) hour24 = 0;
+    
+    return String(hour24).padStart(2, '0') + 
+           String(minutes || 0).padStart(2, '0') + '00';
+}
+
+function getRRuleDays(daysStr) {
+    const dayMap = {
+        'monday': 'MO', 'tuesday': 'TU', 'wednesday': 'WE', 'thursday': 'TH',
+        'friday': 'FR', 'saturday': 'SA', 'sunday': 'SU',
+        'mon': 'MO', 'tue': 'TU', 'wed': 'WE', 'thu': 'TH',
+        'fri': 'FR', 'sat': 'SA', 'sun': 'SU'
+    };
+    
+    const days = daysStr.toLowerCase().split(/[,\s]+/).filter(d => d);
+    return days.map(day => dayMap[day] || 'MO').join(',');
+}
+
+function escapeICS(text) {
+    return text.toString()
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '');
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('errorMessage');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('hidden');
+    document.getElementById('successMessage').classList.add('hidden');
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('successMessage');
+    successDiv.textContent = message;
+    successDiv.classList.remove('hidden');
+    document.getElementById('errorMessage').classList.add('hidden');
+}
+
+function hideMessages() {
+    document.getElementById('errorMessage').classList.add('hidden');
+    document.getElementById('successMessage').classList.add('hidden');
+}
+
+function showGoogleError(message) {
+    const errorDiv = document.getElementById('googleErrorMessage');
+    errorDiv.textContent = message;
+    errorDiv.classList.remove('hidden');
+    document.getElementById('googleSuccessMessage').classList.add('hidden');
+}
+
+function showGoogleSuccess(message) {
+    const successDiv = document.getElementById('googleSuccessMessage');
+    successDiv.textContent = message;
+    successDiv.classList.remove('hidden');
+    document.getElementById('googleErrorMessage').classList.add('hidden');
+}
+
+function hideGoogleMessages() {
+    document.getElementById('googleErrorMessage').classList.add('hidden');
+    document.getElementById('googleSuccessMessage').classList.add('hidden');
+}
+
+function openGoogleCalendar(courses) {
+    if (courses.length === 0) {
+        showError('No courses to add to calendar');
+        return;
+    }
+
+    // Open the first course in Google Calendar
+    const firstCourse = courses[0];
+    const googleCalendarUrl = createGoogleCalendarUrl(firstCourse);
+    
+    // Open Google Calendar in a new tab
+    window.open(googleCalendarUrl, '_blank');
+    
+    showSuccess(`Opened Google Calendar with "${firstCourse.title}". Use the individual "Add to Google Calendar" buttons in the table below to add each course.`);
+}
+
+function openSingleCourseInGoogleCalendar(course) {
+    const googleCalendarUrl = createGoogleCalendarUrl(course);
+    window.open(googleCalendarUrl, '_blank');
+}
+
+function createMultiCourseGoogleCalendarUrl(courses) {
+    // For multiple courses, we'll create a URL that opens the first course
+    // and provide instructions for the rest
+    if (courses.length === 0) return '';
+    
+    const firstCourse = courses[0];
+    const baseUrl = 'https://calendar.google.com/calendar/render';
+    const params = new URLSearchParams();
+    
+    // Event title
+    params.append('action', 'TEMPLATE');
+    params.append('text', firstCourse.title);
+    
+    // Event description with all courses listed
+    let description = `Course: ${firstCourse.title}`;
+    if (firstCourse.instructor) {
+        description += `\nInstructor: ${firstCourse.instructor}`;
+    }
+    if (firstCourse.location) {
+        description += `\nLocation: ${firstCourse.location}`;
+    }
+    
+    // Add list of all courses
+    if (courses.length > 1) {
+        description += `\n\nAll ${courses.length} courses from your Workday schedule:`;
+        courses.forEach((course, index) => {
+            description += `\n${index + 1}. ${course.title}`;
+            if (course.days && course.time) {
+                description += ` (${course.days} ${course.time})`;
+            }
+            if (course.location) {
+                description += ` - ${course.location}`;
+            }
+        });
+        description += `\n\nNote: You'll need to add each course individually. Use the "Add to Calendar" button for each course.`;
+    }
+    
+    params.append('details', description);
+    
+    // Location
+    if (firstCourse.location) {
+        params.append('location', firstCourse.location);
+    }
+    
+    // For now, we'll create a sample date (you might want to make this more sophisticated)
+    const sampleDate = new Date();
+    sampleDate.setDate(sampleDate.getDate() + 1); // Tomorrow
+    const dateStr = sampleDate.toISOString().split('T')[0].replace(/-/g, '');
+    
+    // Parse time (assuming format like "5:30 PM")
+    const startTime = parseTimeForGoogleCalendar(firstCourse.time);
+    const endTime = parseTimeForGoogleCalendar(firstCourse.endTime);
+    
+    // Create datetime strings
+    const startDateTime = `${dateStr}T${startTime}`;
+    const endDateTime = `${dateStr}T${endTime}`;
+    
+    params.append('dates', `${startDateTime}/${endDateTime}`);
+    
+    // Recurrence (simplified - weekly on the specified day)
+    const recurrence = getRecurrenceRule(firstCourse.days);
+    if (recurrence) {
+        params.append('recur', recurrence);
+    }
+    
+    return `${baseUrl}?${params.toString()}`;
+}
+
+function createGoogleCalendarUrl(course) {
+    // Create a Google Calendar URL with pre-filled event details
+    const baseUrl = 'https://calendar.google.com/calendar/render';
+    const params = new URLSearchParams();
+    
+    // Event title
+    params.append('action', 'TEMPLATE');
+    params.append('text', course.title);
+    
+    // Event description
+    let description = `Course: ${course.title}`;
+    if (course.instructor) {
+        description += `\nInstructor: ${course.instructor}`;
+    }
+    if (course.location) {
+        description += `\nLocation: ${course.location}`;
+    }
+    params.append('details', description);
+    
+    // Location
+    if (course.location) {
+        params.append('location', course.location);
+    }
+    
+    // For now, we'll create a sample date (you might want to make this more sophisticated)
+    const sampleDate = new Date();
+    sampleDate.setDate(sampleDate.getDate() + 1); // Tomorrow
+    const dateStr = sampleDate.toISOString().split('T')[0].replace(/-/g, '');
+    
+    // Parse time (assuming format like "5:30 PM")
+    const startTime = parseTimeForGoogleCalendar(course.time);
+    const endTime = parseTimeForGoogleCalendar(course.endTime);
+    
+    // Create datetime strings
+    const startDateTime = `${dateStr}T${startTime}`;
+    const endDateTime = `${dateStr}T${endTime}`;
+    
+    params.append('dates', `${startDateTime}/${endDateTime}`);
+    
+    // Recurrence (simplified - weekly on the specified day)
+    const recurrence = getRecurrenceRule(course.days);
+    if (recurrence) {
+        params.append('recur', recurrence);
+    }
+    
+    return `${baseUrl}?${params.toString()}`;
+}
+
+function parseTimeForGoogleCalendar(timeStr) {
+    // Convert time like "5:30 PM" to "173000" (24-hour format)
+    let time = timeStr.toString().trim();
+    
+    // Handle AM/PM
+    const isPM = time.toLowerCase().includes('pm');
+    const isAM = time.toLowerCase().includes('am');
+    
+    // Remove AM/PM and extract numbers
+    time = time.replace(/[^\d:]/g, '');
+    const [hours, minutes] = time.split(':');
+    
+    let hour24 = parseInt(hours) || 9;
+    if (isPM && hour24 < 12) hour24 += 12;
+    if (isAM && hour24 === 12) hour24 = 0;
+    
+    return String(hour24).padStart(2, '0') + 
+           String(minutes || 0).padStart(2, '0') + '00';
+}
+
+function getRecurrenceRule(daysStr) {
+    // Convert days to Google Calendar recurrence format
+    const dayMap = {
+        'monday': 'MO', 'tuesday': 'TU', 'wednesday': 'WE', 'thursday': 'TH',
+        'friday': 'FR', 'saturday': 'SA', 'sunday': 'SU',
+        'mon': 'MO', 'tue': 'TU', 'wed': 'WE', 'thu': 'TH',
+        'fri': 'FR', 'sat': 'SA', 'sun': 'SU'
+    };
+    
+    const days = daysStr.toLowerCase().split(/[,\s\/]+/).filter(d => d);
+    const googleDays = days.map(day => dayMap[day] || 'MO').join(',');
+    
+    return `RRULE:FREQ=WEEKLY;BYDAY=${googleDays}`;
+}
+
+function resetConverter() {
+    courses = [];
+    document.getElementById('fileInput').value = '';
+    document.getElementById('downloadBtn').disabled = true;
+    document.getElementById('preview').innerHTML = '';
+    hideMessages();
+}
+
+// Google Calendar authentication (server-side with per-user tokens)
+document.getElementById('googleAuthBtn').addEventListener('click', async () => {
+    try {
+        // Check if already authenticated
+        if (isGoogleAuthenticated) {
+            showGoogleSuccess('Already connected to Google Calendar!');
+            return;
+        }
+
+        // Get Google OAuth URL from server
+        const response = await fetch('/api/auth/google/url');
+        const data = await response.json();
+        
+        if (data.authUrl) {
+            // Open Google OAuth in a new window
+            const authWindow = window.open(data.authUrl, 'google-auth', 'width=500,height=600');
+            
+            // Check for authentication completion
+            const checkAuth = setInterval(async () => {
+                if (authWindow.closed) {
+                    clearInterval(checkAuth);
+                    await checkGoogleAuthStatus();
+                }
+            }, 1000);
+        } else {
+            showGoogleError('Failed to get Google authentication URL');
+        }
+    } catch (error) {
+        showGoogleError('Error connecting to Google Calendar: ' + error.message);
+    }
+});
+
+// Disconnect Google Calendar
+document.getElementById('disconnectGoogleBtn').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/api/auth/google/disconnect', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            // Clear authentication state
+            isGoogleAuthenticated = false;
+            document.getElementById('googleAuthSection').classList.remove('hidden');
+            document.getElementById('googleCalendarSection').classList.add('hidden');
+            document.getElementById('addToGoogleBtn').disabled = true;
+            
+            // No message needed - UI state change is enough feedback
+        } else {
+            showGoogleError(data.error || 'Failed to disconnect from Google Calendar');
+        }
+    } catch (error) {
+        console.error('Disconnect error:', error);
+        showGoogleError('Error disconnecting from Google Calendar: ' + error.message);
+    }
+});
+
+// Check Google Calendar authentication status
+async function checkGoogleAuthStatus() {
+    try {
+        const response = await fetch('/api/auth/google/status');
+        const data = await response.json();
+        
+        if (data.authenticated) {
+            isGoogleAuthenticated = true;
+            document.getElementById('googleAuthSection').classList.add('hidden');
+            document.getElementById('googleCalendarSection').classList.remove('hidden');
+            
+            // Load user's calendars
+            await loadGoogleCalendars();
+            
+            // Enable the add to Google button if courses are loaded
+            if (courses.length > 0) {
+                document.getElementById('addToGoogleBtn').disabled = false;
+            }
+        }
+    } catch (error) {
+        showGoogleError('Error checking Google Calendar status: ' + error.message);
+    }
+}
+
+// Load user's Google Calendars
+async function loadGoogleCalendars() {
+    try {
+        const response = await fetch('/api/calendars');
+        const data = await response.json();
+        
+        const select = document.getElementById('calendarSelect');
+        select.innerHTML = '<option value="primary">Primary Calendar</option>';
+        
+        data.calendars.forEach(calendar => {
+            if (calendar.id !== 'primary') {
+                const option = document.createElement('option');
+                option.value = calendar.id;
+                option.textContent = calendar.summary;
+                select.appendChild(option);
+            }
+        });
+    } catch (error) {
+        // Silently fail - user will see empty calendar list
+    }
+}
+
+// Add courses to Google Calendar (server-side with per-user tokens)
+document.getElementById('addToGoogleBtn').addEventListener('click', async () => {
+    if (!isGoogleAuthenticated || courses.length === 0) {
+        showGoogleError('Please connect to Google Calendar and load courses first');
+        return;
+    }
+    
+    const btn = document.getElementById('addToGoogleBtn');
+    const originalText = btn.innerHTML;
+    const calendarId = document.getElementById('calendarSelect').value;
+    
+    try {
+        btn.innerHTML = '<span class="btn-icon">⏳</span>Adding to Calendar...';
+        btn.disabled = true;
+        
+        // Send courses to server to add to Google Calendar
+        const response = await fetch('/api/calendar/events', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                courses: courses.map(course => ({
+                    title: course.title,
+                    days: course.days,
+                    time: course.time,
+                    endTime: course.endTime,
+                    location: course.location,
+                    instructor: course.instructor,
+                    startDate: course.startDate,
+                    endDate: course.endDate
+                })),
+                calendarId: calendarId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showGoogleSuccess(`Successfully added ${result.eventsCreated} events to Google Calendar!`);
+        } else {
+            showGoogleError('Failed to add events to Google Calendar: ' + result.error);
+        }
+    } catch (error) {
+        showGoogleError('Error adding events to Google Calendar: ' + error.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+});
+
+// Check Google auth status on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    // Clear any previous authentication state
+    isGoogleAuthenticated = false;
+    document.getElementById('googleAuthSection').classList.remove('hidden');
+    document.getElementById('googleCalendarSection').classList.add('hidden');
+    
+    // Check if user is authenticated
+    await checkGoogleAuthStatus();
+});

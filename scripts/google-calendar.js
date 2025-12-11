@@ -57,7 +57,6 @@ class GoogleCalendarManager {
             prompt: 'consent'
         });
         
-        console.log(`Generated OAuth URL for user ${this.userId}:`, authUrl);
         return authUrl;
     }
 
@@ -68,9 +67,7 @@ class GoogleCalendarManager {
         this.initOAuth2();
         
         try {
-            console.log(`Getting tokens for user ${this.userId} with code:`, code.substring(0, 10) + '...');
             const { tokens } = await this.oauth2Client.getToken(code);
-            console.log(`Received tokens for user ${this.userId}:`, !!tokens);
             this.oauth2Client.setCredentials(tokens);
             
             // Store tokens per-user instead of globally
@@ -78,7 +75,6 @@ class GoogleCalendarManager {
             
             return tokens;
         } catch (error) {
-            console.error('Error getting tokens:', error);
             throw new Error('Failed to get access tokens: ' + error.message);
         }
     }
@@ -90,25 +86,20 @@ class GoogleCalendarManager {
         try {
             // For Railway/production, try to get tokens from session first
             if (process.env.NODE_ENV === 'production' && this.sessionTokens) {
-                console.log(`Loading tokens from session for user ${this.userId}`);
                 this.oauth2Client.setCredentials(this.sessionTokens);
                 return true;
             }
             
             // Fallback to file system for local development
             const tokensPath = path.join(__dirname, '../tokens', `${this.userId}.json`);
-            console.log(`Loading tokens for user ${this.userId} from: ${tokensPath}`);
             
             if (await fs.pathExists(tokensPath)) {
                 const tokens = await fs.readJson(tokensPath);
-                console.log(`Tokens found for user ${this.userId}:`, !!tokens);
                 this.oauth2Client.setCredentials(tokens);
                 return true;
             }
-            console.log(`No tokens found for user ${this.userId}`);
             return false;
         } catch (error) {
-            console.error('Error loading tokens:', error);
             return false;
         }
     }
@@ -122,11 +113,9 @@ class GoogleCalendarManager {
             await fs.ensureDir(tokensDir);
             
             const tokensPath = path.join(tokensDir, `${this.userId}.json`);
-            console.log(`Saving tokens for user ${this.userId} to: ${tokensPath}`);
             await fs.writeJson(tokensPath, tokens);
-            console.log(`Tokens saved successfully for user ${this.userId}`);
         } catch (error) {
-            console.error('Error saving tokens:', error);
+            // Silently fail - tokens may be stored in session instead
         }
     }
 
@@ -139,7 +128,6 @@ class GoogleCalendarManager {
             const hasTokens = await this.loadTokens();
             return hasTokens;
         } catch (error) {
-            console.error('Error checking authentication:', error);
             return false;
         }
     }
@@ -155,7 +143,6 @@ class GoogleCalendarManager {
             const response = await this.calendar.calendarList.list();
             return response.data.items || [];
         } catch (error) {
-            console.error('Error getting calendars:', error);
             throw new Error('Failed to get calendars');
         }
     }
@@ -182,7 +169,6 @@ class GoogleCalendarManager {
 
             return { events, errors };
         } catch (error) {
-            console.error('Error creating events:', error);
             throw new Error('Failed to create events');
         }
     }

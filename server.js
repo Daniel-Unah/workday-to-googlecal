@@ -77,10 +77,8 @@ app.get('/api/auth/google/url', (req, res) => {
             req.session.save();
         }
         
-        console.log('Generating auth URL for user:', req.session.userId);
         const calendarManager = new GoogleCalendarManager(req.session.userId);
         const authUrl = calendarManager.getAuthUrl();
-        console.log('Generated auth URL:', authUrl);
         res.json({ authUrl });
     } catch (error) {
         console.error('Error generating auth URL:', error);
@@ -95,32 +93,24 @@ app.get('/auth/google/callback', async (req, res) => {
     try {
         const { code } = req.query;
         
-        console.log('OAuth callback received for session:', req.session.userId);
-        
         if (!code) {
-            console.log('No authorization code provided');
             return res.status(400).send('Authorization code not provided');
         }
 
         if (!req.session.userId) {
-            console.log('No user ID in session during callback');
             return res.status(400).send('Session expired. Please try again.');
         }
 
-        console.log('Getting tokens for user:', req.session.userId);
         const calendarManager = new GoogleCalendarManager(req.session.userId);
         
         try {
             const tokens = await calendarManager.getTokens(code);
-            console.log('Tokens saved successfully for user:', req.session.userId);
-            
             // Store tokens in session for production
             if (process.env.NODE_ENV === 'production') {
                 req.session.googleTokens = tokens;
                 req.session.save();
             }
         } catch (tokenError) {
-            console.error('Error in getTokens:', tokenError);
             throw tokenError;
         }
         
@@ -156,10 +146,7 @@ app.get('/auth/google/callback', async (req, res) => {
  */
 app.get('/api/auth/google/status', async (req, res) => {
     try {
-        console.log('Checking authentication status for session:', req.session.userId);
-        
         if (!req.session.userId) {
-            console.log('No user ID in session');
             return res.json({ authenticated: false });
         }
         
@@ -170,7 +157,6 @@ app.get('/api/auth/google/status', async (req, res) => {
         }
         const isAuthenticated = await calendarManager.isAuthenticated();
         
-        console.log('Authentication result:', isAuthenticated);
         res.json({ authenticated: isAuthenticated });
     } catch (error) {
         console.error('Error checking authentication status:', error);
