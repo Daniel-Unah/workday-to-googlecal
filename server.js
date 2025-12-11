@@ -174,6 +174,10 @@ app.get('/api/calendars', async (req, res) => {
         }
         
         const calendarManager = new GoogleCalendarManager(req.session.userId);
+        // Pass session tokens for production
+        if (process.env.NODE_ENV === 'production' && req.session.googleTokens) {
+            calendarManager.sessionTokens = req.session.googleTokens;
+        }
         const calendars = await calendarManager.getCalendars();
         res.json({ calendars });
     } catch (error) {
@@ -197,7 +201,16 @@ app.post('/api/calendar/events', async (req, res) => {
         }
 
         const calendarManager = new GoogleCalendarManager(req.session.userId);
+        // Pass session tokens for production
+        if (process.env.NODE_ENV === 'production' && req.session.googleTokens) {
+            calendarManager.sessionTokens = req.session.googleTokens;
+        }
         const result = await calendarManager.createEvents(courses, calendarId, batchId);
+        
+        console.log(`Events created: ${result.events.length}, Errors: ${result.errors.length}`);
+        if (result.errors.length > 0) {
+            console.error('Event creation errors:', result.errors);
+        }
         
         res.json({
             success: true,
@@ -228,6 +241,10 @@ app.post('/api/calendar/events/delete', async (req, res) => {
         }
 
         const calendarManager = new GoogleCalendarManager(req.session.userId);
+        // Pass session tokens for production
+        if (process.env.NODE_ENV === 'production' && req.session.googleTokens) {
+            calendarManager.sessionTokens = req.session.googleTokens;
+        }
         const result = await calendarManager.deleteEventsByBatch(batchId, calendarId);
         
         res.json({

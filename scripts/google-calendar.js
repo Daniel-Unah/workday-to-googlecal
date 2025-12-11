@@ -153,12 +153,19 @@ class GoogleCalendarManager {
     async createEvents(courses, calendarId = 'primary', batchId = null) {
         try {
             this.initOAuth2();
-            await this.loadTokens();
+            const hasTokens = await this.loadTokens();
+            
+            if (!hasTokens) {
+                throw new Error('No authentication tokens found. Please authenticate with Google Calendar first.');
+            }
             
             // Generate batch ID if not provided
             if (!batchId) {
                 batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             }
+            
+            console.log(`Creating ${courses.length} events in calendar: ${calendarId}`);
+            console.log('Batch ID:', batchId);
             
             const events = [];
             const errors = [];
@@ -170,13 +177,16 @@ class GoogleCalendarManager {
                     events.push(event);
                     eventIds.push(event.id);
                 } catch (error) {
+                    console.error(`Failed to create event for ${course.title}:`, error.message);
                     errors.push(`Course "${course.title}": ${error.message}`);
                 }
             }
 
+            console.log(`Successfully created ${events.length} events. ${errors.length} errors.`);
             return { events, errors, eventIds, batchId };
         } catch (error) {
-            throw new Error('Failed to create events');
+            console.error('Error in createEvents:', error);
+            throw new Error('Failed to create events: ' + error.message);
         }
     }
 

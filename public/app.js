@@ -958,7 +958,14 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
             // Store the batch ID for deletion
             currentBatchId = result.batchId;
             
-            showGoogleSuccess(`Successfully added ${result.eventsCreated} events to Google Calendar!`);
+            let message = `Successfully added ${result.eventsCreated} events to Google Calendar!`;
+            
+            // Show errors if any
+            if (result.errors && result.errors.length > 0) {
+                message += `\n\nWarning: ${result.errors.length} course(s) had errors:\n${result.errors.join('\n')}`;
+            }
+            
+            showGoogleSuccess(message);
             
             // Show the delete button
             const deleteBtn = document.getElementById('removeEventsBtn');
