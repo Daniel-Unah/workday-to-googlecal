@@ -57,9 +57,21 @@ app.post('/api/auth/google/disconnect', (req, res) => {
             if (fs.existsSync(tokensPath)) {
                 fs.unlinkSync(tokensPath);
             }
+            
+            // Clear session tokens (for production)
+            delete req.session.googleTokens;
+            
+            // Save session to ensure changes persist
+            req.session.save((err) => {
+                if (err) {
+                    console.error('Error saving session:', err);
+                    return res.status(500).json({ error: 'Failed to clear session' });
+                }
+                res.json({ success: true, message: 'Disconnected successfully' });
+            });
+        } else {
+            res.json({ success: true, message: 'Disconnected successfully' });
         }
-        
-        res.json({ success: true, message: 'Disconnected successfully' });
     } catch (error) {
         console.error('Disconnect error:', error);
         res.status(500).json({ error: 'Failed to disconnect from Google Calendar' });
