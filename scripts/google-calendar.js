@@ -254,10 +254,18 @@ class GoogleCalendarManager {
             console.log('\n✅ EVENT CREATED SUCCESSFULLY');
             console.log('   Course:', response.data.summary);
             console.log('   Event ID:', response.data.id);
-            console.log('   Start Time:', response.data.start.dateTime, '(' + response.data.start.timeZone + ')');
-            console.log('   End Time:', response.data.end.dateTime, '(' + response.data.end.timeZone + ')');
-            console.log('   Recurrence:', response.data.recurrence ? response.data.recurrence[0] : 'None');
-            console.log('   View in Calendar:', response.data.htmlLink);
+            if (response.data.start) {
+                console.log('   Start Time:', response.data.start.dateTime, '(' + response.data.start.timeZone + ')');
+            }
+            if (response.data.end) {
+                console.log('   End Time:', response.data.end.dateTime, '(' + response.data.end.timeZone + ')');
+            }
+            if (response.data.recurrence) {
+                console.log('   Recurrence:', response.data.recurrence[0]);
+            }
+            if (response.data.htmlLink) {
+                console.log('   View in Calendar:', response.data.htmlLink);
+            }
             console.log('');
             return response.data;
         } catch (error) {
