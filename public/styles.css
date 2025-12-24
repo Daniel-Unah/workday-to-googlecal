@@ -572,9 +572,24 @@ h2 {
 
 .footer {
     text-align: center;
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(255, 255, 255, 0.9);
     margin-top: 40px;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
+}
+
+.footer a {
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+}
+
+.footer a:hover,
+.footer a:focus-visible {
+    color: #f0f4ff;
+    text-decoration-color: #f0f4ff;
+    outline: none;
 }
 
 .features {
