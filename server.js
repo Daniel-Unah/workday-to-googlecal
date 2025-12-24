@@ -344,12 +344,38 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
+// Start server with better error handling
+console.log('🔧 Starting server...');
+console.log('Environment:', process.env.NODE_ENV || 'development');
+console.log('Port:', PORT);
+
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📁 Serving static files from: ${path.join(__dirname, 'public')}`);
     console.log(`📤 Upload directory: ${path.join(__dirname, 'uploads')}`);
     console.log(`📥 Download directory: ${path.join(__dirname, 'downloads')}`);
+    console.log('✅ Server started successfully');
+});
+
+server.on('error', (error) => {
+    console.error('❌ Server failed to start:', error);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise);
+    console.error('Reason:', reason);
+    process.exit(1);
 });
 
 module.exports = app;
