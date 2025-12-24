@@ -43,7 +43,7 @@ class GoogleCalendarManager {
     /**
      * Get authorization URL for user to authenticate
      */
-    getAuthUrl() {
+    getAuthUrl(state) {
         this.initOAuth2();
         
         const scopes = [
@@ -54,7 +54,8 @@ class GoogleCalendarManager {
         const authUrl = this.oauth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: scopes,
-            prompt: 'consent'
+            prompt: 'consent',
+            state: state // Add CSRF protection via state parameter
         });
         
         return authUrl;

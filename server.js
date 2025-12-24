@@ -89,8 +89,13 @@ app.get('/api/auth/google/url', (req, res) => {
             req.session.save();
         }
         
+        // Generate a CSRF state token and store it in the session
+        const state = require('crypto').randomBytes(32).toString('hex');
+        req.session.oauthState = state;
+        req.session.save();
+        
         const calendarManager = new GoogleCalendarManager(req.session.userId);
-        const authUrl = calendarManager.getAuthUrl();
+        const authUrl = calendarManager.getAuthUrl(state);
         res.json({ authUrl });
     } catch (error) {
         console.error('Error generating auth URL:', error);
@@ -103,11 +108,20 @@ app.get('/api/auth/google/url', (req, res) => {
  */
 app.get('/auth/google/callback', async (req, res) => {
     try {
-        const { code } = req.query;
+        const { code, state } = req.query;
         
         if (!code) {
             return res.status(400).send('Authorization code not provided');
         }
+        
+        // Verify the state parameter to prevent CSRF attacks
+        if (!state || state !== req.session.oauthState) {
+            console.error('State mismatch! Possible CSRF attack. Expected:', req.session.oauthState, 'Got:', state);
+            return res.status(403).send('State validation failed. Possible CSRF attack detected.');
+        }
+        
+        // Clear the used state
+        delete req.session.oauthState;
 
         if (!req.session.userId) {
             return res.status(400).send('Session expired. Please try again.');
