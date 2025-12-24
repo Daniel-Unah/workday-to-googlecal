@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Workday to Google Calendar Converter</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .privacy-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            line-height: 1.6;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .privacy-content h1 {
+            color: #1e40af;
+            margin-bottom: 10px;
+        }
+        .privacy-content h2 {
+            color: #1e3a8a;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        .privacy-content p {
+            margin-bottom: 15px;
+            color: #1f2937;
+        }
+        .privacy-content ul {
+            margin-left: 20px;
+            margin-bottom: 15px;
+        }
+        .privacy-content li {
+            margin-bottom: 8px;
+            color: #1f2937;
+        }
+        .privacy-content a {
+            color: #2563eb;
+        }
+        .privacy-content a:hover {
+            color: #1e40af;
+        }
+        .last-updated {
+            color: #4b5563;
+            font-style: italic;
+            margin-bottom: 30px;
+        }
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 30px;
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="privacy-content">
+        <h1>Privacy Policy</h1>
+        <p class="last-updated">Last Updated: December 24, 2025</p>
+
+        <h2>1. Introduction</h2>
+        <p>
+            Workday to Google Calendar Converter ("we", "our", or "the App") is committed to protecting your privacy. 
+            This Privacy Policy explains how we collect, use, and safeguard your information when you use our service.
+        </p>
+
+        <h2>2. Information We Collect</h2>
+        <p>We collect and process the following information:</p>
+        <ul>
+            <li><strong>Google OAuth Tokens:</strong> Access and refresh tokens to authenticate with Google Calendar API on your behalf</li>
+            <li><strong>Session Data:</strong> A temporary session identifier to maintain your connection</li>
+            <li><strong>Uploaded Files:</strong> Excel/spreadsheet files containing your Workday schedule (processed temporarily)</li>
+            <li><strong>Calendar Data:</strong> Course information from your uploaded file to create calendar events</li>
+        </ul>
+
+        <h2>3. How We Use Your Information</h2>
+        <p>We use the collected information solely for the following purposes:</p>
+        <ul>
+            <li>Authenticating with Google Calendar API to access your calendar</li>
+            <li>Creating calendar events based on your Workday schedule</li>
+            <li>Deleting calendar events you've previously created through our app</li>
+            <li>Maintaining your session during your use of the App</li>
+        </ul>
+
+        <h2>4. Data Storage and Security</h2>
+        <ul>
+            <li><strong>OAuth Tokens:</strong> Stored securely in encrypted sessions (production) or local filesystem (development)</li>
+            <li><strong>Uploaded Files:</strong> Processed in memory and immediately deleted after conversion</li>
+            <li><strong>Session Data:</strong> Automatically expires after 24 hours of inactivity</li>
+            <li><strong>No Long-term Storage:</strong> We do not permanently store any personal information, course schedules, or calendar data</li>
+        </ul>
+
+        <h2>5. Data Sharing and Third Parties</h2>
+        <p>We do not sell, trade, or share your personal information with third parties, except:</p>
+        <ul>
+            <li><strong>Google Calendar API:</strong> We send your calendar event data to Google's servers when you choose to add events to your calendar</li>
+            <li><strong>No Other Third Parties:</strong> Your data is never shared with advertisers, analytics services, or other external parties</li>
+        </ul>
+
+        <h2>6. Google API Services User Data Policy</h2>
+        <p>
+            This App's use and transfer of information received from Google APIs adheres to 
+            <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">
+                Google API Services User Data Policy
+            </a>, including the Limited Use requirements.
+        </p>
+
+        <h2>7. Your Rights and Choices</h2>
+        <p>You have the following rights regarding your data:</p>
+        <ul>
+            <li><strong>Disconnect:</strong> You can disconnect your Google Calendar at any time using the "Disconnect" button</li>
+            <li><strong>Token Deletion:</strong> Disconnecting immediately deletes all stored OAuth tokens from our system</li>
+            <li><strong>Revoke Access:</strong> You can revoke our app's access through your Google Account settings at any time</li>
+            <li><strong>Data Deletion:</strong> All session data is automatically deleted after 24 hours or when you disconnect</li>
+        </ul>
+
+        <h2>8. Cookies and Session Management</h2>
+        <p>
+            We use session cookies solely for maintaining your authenticated state while using the App. 
+            These cookies are essential for the App to function and expire when your session ends or after 24 hours.
+        </p>
+
+        <h2>9. Children's Privacy</h2>
+        <p>
+            This App is not intended for users under the age of 13. We do not knowingly collect information from children under 13.
+        </p>
+
+        <h2>10. Changes to This Privacy Policy</h2>
+        <p>
+            We may update this Privacy Policy from time to time. Any changes will be posted on this page with an updated "Last Updated" date.
+        </p>
+
+        <h2>11. Contact Information</h2>
+        <p>
+            If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:
+        </p>
+        <p>
+            <strong>Email:</strong> <a href="mailto:your-email@example.com">your-email@example.com</a><br>
+            <strong>GitHub:</strong> <a href="https://github.com/Daniel-Unah/workday-to-googlecal" target="_blank" rel="noopener noreferrer">github.com/Daniel-Unah/workday-to-googlecal</a>
+        </p>
+
+        <h2>12. Data Retention</h2>
+        <p>
+            We retain your OAuth tokens only for the duration of your active session (maximum 24 hours). 
+            Uploaded files are deleted immediately after processing. No data is retained after you disconnect or your session expires.
+        </p>
+
+        <a href="/" class="back-link">← Back to App</a>
+    </div>
+</body>
+</html>
