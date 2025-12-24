@@ -378,7 +378,6 @@ function getCellValue(row, columnIndex) {
 function convertExcelDate(excelSerial) {
     // Excel serial numbers start from 1900-01-01 (serial 1)
     // But Excel incorrectly treats 1900 as a leap year, so we need to adjust
-    const excelEpoch = new Date(1900, 0, 1); // January 1, 1900
     const serial = parseFloat(excelSerial);
     
     if (isNaN(serial)) return null;
@@ -388,11 +387,18 @@ function convertExcelDate(excelSerial) {
     // So we need to subtract 2 days for dates after 1900-02-28
     let adjustedSerial = serial;
     if (serial > 59) { // After 1900-02-28
-        adjustedSerial = serial - 2;
+        adjustedSerial = serial - 1; // Subtract 1 instead of 2 to account for the leap year bug
+    } else {
+        adjustedSerial = serial;
     }
     
-    const date = new Date(excelEpoch.getTime() + (adjustedSerial - 1) * 24 * 60 * 60 * 1000);
-    return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+    // Use UTC to avoid timezone issues
+    const date = new Date(Date.UTC(1900, 0, adjustedSerial));
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`; // Return YYYY-MM-DD format
 }
 
 function displayPreview(courses) {
