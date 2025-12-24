@@ -81,6 +81,7 @@ jspm_packages/
 # Uploads and temporary files
 uploads/
 downloads/
+tokens/
 tokens.json
 
 # Minified files (generated during build)

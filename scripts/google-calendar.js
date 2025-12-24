@@ -203,8 +203,10 @@ class GoogleCalendarManager {
             console.log('Creating event for course:', course.title);
             console.log('Course data:', JSON.stringify(course, null, 2));
             
-            const startDateTime = this.parseDateTime(course.startDate, course.time);
-            const endDateTime = this.parseDateTime(course.startDate, course.endTime);
+            // Compute the first meeting date on or after the semester start
+            const firstMeetingDate = this.getFirstMeetingDate(course.startDate, course.days);
+            const startDateTime = this.parseDateTime(firstMeetingDate, course.time);
+            const endDateTime = this.parseDateTime(firstMeetingDate, course.endTime);
             
             if (!startDateTime || !endDateTime) {
                 throw new Error(`Invalid date/time for course "${course.title}". Start: ${course.startDate} ${course.time}, End: ${course.endDate} ${course.endTime}`);
@@ -417,6 +419,87 @@ class GoogleCalendarManager {
         const until = end.toISOString().split('T')[0].replace(/-/g, '');
 
         return [`RRULE:FREQ=WEEKLY;BYDAY=${dayList.join(',')};UNTIL=${until}`];
+    }
+
+    /**
+     * Determine the first meeting date on or after the given start date
+     * Ensures DTSTART aligns with BYDAY so Google Calendar doesn't create
+     * an extra first occurrence on a non-meeting day.
+     */
+    getFirstMeetingDate(startDateStr, daysStr) {
+        try {
+            if (!startDateStr || !daysStr) return startDateStr;
+
+            // Parse start date into a Date object (local time)
+            let year, month, day;
+            if (typeof startDateStr === 'number') {
+                const d = new Date(startDateStr);
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+                day = d.getDate();
+            } else if (startDateStr.includes('-')) {
+                const parts = startDateStr.split('-').map(Number);
+                [year, month, day] = parts;
+            } else if (startDateStr.includes('/')) {
+                const parts = startDateStr.split('/').map(Number);
+                if (parts.length === 3) {
+                    [month, day, year] = parts;
+                    if (year < 100) {
+                        year += (year < 30) ? 2000 : 1900;
+                    }
+                }
+            } else {
+                const d = new Date(startDateStr);
+                if (!isNaN(d.getTime())) {
+                    year = d.getFullYear();
+                    month = d.getMonth() + 1;
+                    day = d.getDate();
+                }
+            }
+
+            if (!year || !month || !day) return startDateStr;
+
+            const start = new Date(year, (month - 1), day);
+
+            // Map full day names to JS day indices (0=Sun ... 6=Sat)
+            const nameToIndex = {
+                'Sunday': 0,
+                'Monday': 1,
+                'Tuesday': 2,
+                'Wednesday': 3,
+                'Thursday': 4,
+                'Friday': 5,
+                'Saturday': 6
+            };
+
+            // Support both "/" and "," separators
+            const dayNames = daysStr.split(/[\/\,]/).map(s => s.trim()).filter(Boolean);
+            const targetIndices = dayNames
+                .map(n => nameToIndex[n])
+                .filter(i => typeof i === 'number');
+
+            if (targetIndices.length === 0) return startDateStr;
+
+            // If start day already matches a meeting day, keep it
+            if (targetIndices.includes(start.getDay())) {
+                return `${String(start.getFullYear()).padStart(4, '0')}-${String(start.getMonth()+1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+            }
+
+            // Otherwise, advance up to 7 days to find the next matching meeting day
+            for (let offset = 1; offset <= 7; offset++) {
+                const d = new Date(start);
+                d.setDate(start.getDate() + offset);
+                if (targetIndices.includes(d.getDay())) {
+                    return `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                }
+            }
+
+            // Fallback: return original start date string
+            return startDateStr;
+        } catch (e) {
+            console.warn('getFirstMeetingDate failed, using original start date:', e?.message);
+            return startDateStr;
+        }
     }
 
     /**
