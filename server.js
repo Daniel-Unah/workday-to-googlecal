@@ -34,10 +34,6 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Ensure directories exist
-fs.ensureDirSync('uploads');
-fs.ensureDirSync('downloads');
-
 // Routes
 
 /**
@@ -346,25 +342,40 @@ app.use((err, req, res, next) => {
 });
 
 // Start server with better error handling
-console.log('🔧 Starting server...');
-console.log('Environment:', process.env.NODE_ENV || 'development');
-console.log('Port:', PORT);
+async function startServer() {
+    try {
+        console.log('🔧 Starting server...');
+        console.log('Environment:', process.env.NODE_ENV || 'development');
+        console.log('Port:', PORT);
+        
+        // Ensure directories exist asynchronously
+        await fs.ensureDir('uploads');
+        await fs.ensureDir('downloads');
+        await fs.ensureDir('tokens');
+        console.log('✅ Directories created/verified');
+        
+        const server = app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on http://localhost:${PORT}`);
+            console.log(`📁 Serving static files from: ${path.join(__dirname, 'public')}`);
+            console.log(`📤 Upload directory: ${path.join(__dirname, 'uploads')}`);
+            console.log(`📥 Download directory: ${path.join(__dirname, 'downloads')}`);
+            console.log('✅ Server started successfully');
+        });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📁 Serving static files from: ${path.join(__dirname, 'public')}`);
-    console.log(`📤 Upload directory: ${path.join(__dirname, 'uploads')}`);
-    console.log(`📥 Download directory: ${path.join(__dirname, 'downloads')}`);
-    console.log('✅ Server started successfully');
-});
+        server.on('error', (error) => {
+            console.error('❌ Server failed to start:', error);
+            console.error('Error code:', error.code);
+            console.error('Error message:', error.message);
+            console.error('Stack:', error.stack);
+            process.exit(1);
+        });
+    } catch (error) {
+        console.error('❌ Failed to initialize server:', error);
+        process.exit(1);
+    }
+}
 
-server.on('error', (error) => {
-    console.error('❌ Server failed to start:', error);
-    console.error('Error code:', error.code);
-    console.error('Error message:', error.message);
-    console.error('Stack:', error.stack);
-    process.exit(1);
-});
+startServer();
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
