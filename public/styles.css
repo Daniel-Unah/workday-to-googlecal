@@ -61,6 +61,8 @@ h2 {
     justify-content: center;
     margin-right: 15px;
     font-weight: bold;
+    line-height: 30px; /* ensure glyph isn't clipped vertically */
+    flex-shrink: 0; /* don't squeeze the badge in flex layouts */
 }
 
 .instructions {
@@ -71,7 +73,9 @@ h2 {
 }
 
 .instructions ol {
-    margin-left: 20px;
+    margin-left: 0;
+    padding-left: 20px;
+    list-style-position: inside; /* keep numbers inside container to avoid clipping */
 }
 
 .instructions li {
@@ -620,7 +624,9 @@ h2 {
     }
     
     .instructions ol {
-        margin-left: 15px;
+        margin-left: 0;
+        padding-left: 16px;
+        list-style-position: inside;
     }
 }
 
@@ -637,6 +643,27 @@ h2 {
         font-size: 1rem;
     }
     
+    .card {
+        padding: 15px;
+        margin: 15px 0;
+    }
+    
+    h2 {
+        font-size: 1.3rem;
+    }
+    
+    .step-number {
+        width: 34px;
+        height: 34px;
+        font-size: 18px;
+        line-height: 34px; /* more breathing room for the digit */
+    }
+    
+    .file-input {
+        padding: 12px;
+        font-size: 14px;
+    }
+    
     .calendar-actions {
         flex-direction: column;
         gap: 10px;
@@ -647,26 +674,5 @@ h2 {
         width: 100%;
         padding: 12px 15px;
         font-size: 13px;
-    }
-    }
-    
-    .card {
-        padding: 15px;
-        margin: 15px 0;
-    }
-    
-    .step-number {
-        width: 25px;
-        height: 25px;
-        font-size: 14px;
-    }
-    
-    h2 {
-        font-size: 1.3rem;
-    }
-    
-    .file-input {
-        padding: 12px;
-        font-size: 14px;
     }
 }
