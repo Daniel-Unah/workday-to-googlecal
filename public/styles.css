@@ -72,13 +72,15 @@ h2 {
     border-left: 4px solid #667eea;
 }
 
-.instructions ol {
+.instructions ol,
+.manual-section ol {
     margin-left: 0;
-    padding-left: 20px;
-    list-style-position: inside; /* keep numbers inside container to avoid clipping */
+    padding-left: 40px; /* indent numbers to the right */
+    list-style-position: outside; /* numbers sit in margin, text aligns cleanly */
 }
 
-.instructions li {
+.instructions li,
+.manual-section li {
     margin: 8px 0;
     color: #4a5568;
 }
@@ -638,10 +640,11 @@ h2 {
         padding: 15px;
     }
     
-    .instructions ol {
+    .instructions ol,
+    .manual-section ol {
         margin-left: 0;
-        padding-left: 16px;
-        list-style-position: inside;
+        padding-left: 32px;
+        list-style-position: outside;
     }
 }
 
