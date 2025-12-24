@@ -28,7 +28,11 @@ class GoogleCalendarManager {
      */
     initOAuth2() {
         if (!this.clientId || !this.clientSecret) {
-            throw new Error('Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your .env file');
+            console.warn('  Warning: Google OAuth credentials not configured');
+            console.warn('   GOOGLE_CLIENT_ID:', this.clientId ? 'Set' : 'Missing');
+            console.warn('   GOOGLE_CLIENT_SECRET:', this.clientSecret ? 'Set' : 'Missing');
+            console.warn('   Google Calendar features will not be available');
+            throw new Error('Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment variables.');
         }
 
         this.oauth2Client = new google.auth.OAuth2(

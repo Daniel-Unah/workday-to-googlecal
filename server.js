@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs-extra');
 const session = require('express-session');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const GoogleCalendarManager = require('./scripts/google-calendar');
@@ -90,7 +91,7 @@ app.get('/api/auth/google/url', (req, res) => {
         }
         
         // Generate a CSRF state token and store it in the session
-        const state = require('crypto').randomBytes(32).toString('hex');
+        const state = crypto.randomBytes(32).toString('hex');
         req.session.oauthState = state;
         req.session.save();
         
