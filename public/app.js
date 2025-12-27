@@ -475,10 +475,9 @@ function downloadICS(courses) {
             const eventId = 'workday-event-' + course.id + '@workday-converter.com';
             const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
             
-            // Create a sample date (you might want to make this more sophisticated)
-            const sampleDate = new Date();
-            sampleDate.setDate(sampleDate.getDate() + 1); // Tomorrow
-            const dateStr = sampleDate.toISOString().split('T')[0].replace(/-/g, '');
+            // Calculate the first meeting date based on startDate and days
+            const firstMeetingDate = getFirstMeetingDate(course.startDate, course.days);
+            const dateStr = firstMeetingDate.replace(/-/g, '');
             
             icsContent += 'BEGIN:VEVENT\n';
             icsContent += 'UID:' + eventId + '\n';
@@ -486,7 +485,13 @@ function downloadICS(courses) {
             icsContent += 'DTSTART:' + dateStr + 'T' + formatTimeForICS(course.time) + '\n';
             icsContent += 'DTEND:' + dateStr + 'T' + formatTimeForICS(course.endTime) + '\n';
             icsContent += 'SUMMARY:' + escapeICS(course.title) + '\n';
-            icsContent += 'RRULE:FREQ=WEEKLY;BYDAY=' + getRRuleDays(course.days) + '\n';
+            
+            let rrule = 'RRULE:FREQ=WEEKLY;BYDAY=' + getRRuleDays(course.days);
+            if (course.endDate) {
+                const untilDate = course.endDate.replace(/-/g, '');
+                rrule += ';UNTIL=' + untilDate;
+            }
+            icsContent += rrule + '\n';
             
             if (course.location) {
                 icsContent += 'LOCATION:' + escapeICS(course.location) + '\n';
@@ -539,6 +544,119 @@ function formatTimeForICS(timeStr) {
            String(minutes || 0).padStart(2, '0') + '00';
 }
 
+function getFirstMeetingDate(startDateStr, daysStr) {
+    try {
+        // Map full day names to JS day indices (0=Sun ... 6=Sat)
+        const nameToIndex = {
+            'Sunday': 0,
+            'Monday': 1,
+            'Tuesday': 2,
+            'Wednesday': 3,
+            'Thursday': 4,
+            'Friday': 5,
+            'Saturday': 6
+        };
+
+        // Parse days first to get target day indices
+        let targetIndices = [];
+        if (daysStr) {
+            // Support both "/" and "," separators
+            const dayNames = daysStr.split(/[\/\,]/).map(s => s.trim()).filter(Boolean);
+            targetIndices = dayNames
+                .map(n => nameToIndex[n])
+                .filter(i => typeof i === 'number');
+        }
+
+        // If no valid days found, use today as fallback
+        if (targetIndices.length === 0) {
+            const today = new Date();
+            return `${String(today.getFullYear()).padStart(4, '0')}-${String(today.getMonth()+1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
+
+        // Determine the base date
+        let start;
+        if (startDateStr) {
+            // Parse start date into a Date object
+            let year, month, day;
+            if (typeof startDateStr === 'number') {
+                const d = new Date(startDateStr);
+                year = d.getFullYear();
+                month = d.getMonth() + 1;
+                day = d.getDate();
+            } else if (startDateStr.includes('-')) {
+                const parts = startDateStr.split('-').map(Number);
+                [year, month, day] = parts;
+            } else if (startDateStr.includes('/')) {
+                const parts = startDateStr.split('/').map(Number);
+                if (parts.length === 3) {
+                    [month, day, year] = parts;
+                    if (year < 100) {
+                        year += (year < 30) ? 2000 : 1900;
+                    }
+                }
+            } else {
+                const d = new Date(startDateStr);
+                if (!isNaN(d.getTime())) {
+                    year = d.getFullYear();
+                    month = d.getMonth() + 1;
+                    day = d.getDate();
+                }
+            }
+
+            if (year && month && day) {
+                start = new Date(year, (month - 1), day);
+            }
+        }
+
+        // If no valid start date, use today
+        if (!start || isNaN(start.getTime())) {
+            start = new Date();
+        }
+
+        // If start day already matches a meeting day, keep it
+        if (targetIndices.includes(start.getDay())) {
+            return `${String(start.getFullYear()).padStart(4, '0')}-${String(start.getMonth()+1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+        }
+
+        // Otherwise, advance up to 7 days to find the next matching meeting day
+        for (let offset = 1; offset <= 7; offset++) {
+            const d = new Date(start);
+            d.setDate(start.getDate() + offset);
+            if (targetIndices.includes(d.getDay())) {
+                return `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+        }
+
+        // Fallback: return start date (shouldn't reach here, but just in case)
+        return `${String(start.getFullYear()).padStart(4, '0')}-${String(start.getMonth()+1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    } catch (e) {
+        console.warn('getFirstMeetingDate failed, using fallback:', e?.message);
+        // Fallback: find next occurrence of first meeting day from today
+        const today = new Date();
+        const nameToIndex = {
+            'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+            'Thursday': 4, 'Friday': 5, 'Saturday': 6
+        };
+        if (daysStr) {
+            const dayNames = daysStr.split(/[\/\,]/).map(s => s.trim()).filter(Boolean);
+            const targetIndices = dayNames.map(n => nameToIndex[n]).filter(i => typeof i === 'number');
+            if (targetIndices.length > 0) {
+                for (let offset = 0; offset <= 7; offset++) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() + offset);
+                    if (targetIndices.includes(d.getDay())) {
+                        return `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    }
+                }
+            }
+        }
+        // Last resort: tomorrow
+        const fallback = new Date();
+        fallback.setDate(fallback.getDate() + 1);
+        return fallback.toISOString().split('T')[0];
+    }
+}
+
 function getRRuleDays(daysStr) {
     const dayMap = {
         'monday': 'MO', 'tuesday': 'TU', 'wednesday': 'WE', 'thursday': 'TH',
@@ -547,8 +665,12 @@ function getRRuleDays(daysStr) {
         'fri': 'FR', 'sat': 'SA', 'sun': 'SU'
     };
     
-    const days = daysStr.toLowerCase().split(/[,\s]+/).filter(d => d);
-    return days.map(day => dayMap[day] || 'MO').join(',');
+    // Support both "/" and "," separators, and handle whitespace
+    const days = daysStr.toLowerCase().split(/[\/\,]/).map(d => d.trim()).filter(d => d);
+    const rruleDays = days.map(day => dayMap[day] || null).filter(Boolean);
+    
+    // If no valid days found, default to Monday
+    return rruleDays.length > 0 ? rruleDays.join(',') : 'MO';
 }
 
 function escapeICS(text) {
