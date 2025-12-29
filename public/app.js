@@ -914,47 +914,9 @@ document.getElementById('googleAuthBtn').addEventListener('click', async () => {
         const data = await response.json();
         
         if (data.authUrl) {
-            // Open Google OAuth in a new window
-            const authWindow = window.open(data.authUrl, 'google-auth', 'width=500,height=600');
-            
-            // Show a message to user
-            showGoogleSuccess('Authentication window opened. Please complete the authorization and then click "Check Connection Status" below.');
-            
-            // Add a "Check Status" button if it doesn't exist
-            let checkStatusBtn = document.getElementById('checkAuthStatusBtn');
-            if (!checkStatusBtn) {
-                checkStatusBtn = document.createElement('button');
-                checkStatusBtn.id = 'checkAuthStatusBtn';
-                checkStatusBtn.className = 'btn btn-primary';
-                checkStatusBtn.style.marginTop = '10px';
-                checkStatusBtn.innerHTML = '<span class="btn-icon">🔄</span>Check Connection Status';
-                checkStatusBtn.addEventListener('click', async () => {
-                    await checkGoogleAuthStatus();
-                    // Remove the button if authenticated
-                    if (isGoogleAuthenticated) {
-                        checkStatusBtn.remove();
-                    }
-                });
-                document.getElementById('googleAuthSection').appendChild(checkStatusBtn);
-            }
-            
-            // Try to detect when window closes (but handle the error)
-            const checkAuth = setInterval(() => {
-                try {
-                    if (authWindow && authWindow.closed) {
-                        clearInterval(checkAuth);
-                        // Auto-check status after a short delay
-                        setTimeout(async () => {
-                            await checkGoogleAuthStatus();
-                            if (isGoogleAuthenticated && checkStatusBtn) {
-                                checkStatusBtn.remove();
-                            }
-                        }, 1000);
-                    }
-                } catch (e) {
-                    // Silently ignore COOP errors
-                }
-            }, 1000);
+            // Use full-page redirect instead of popup for better session cookie support
+            // The OAuth callback will redirect back to the app after authentication
+            window.location.href = data.authUrl;
             
             // Stop checking after 5 minutes
             setTimeout(() => {
@@ -1169,6 +1131,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     isGoogleAuthenticated = false;
     document.getElementById('googleAuthSection').classList.remove('hidden');
     document.getElementById('googleCalendarSection').classList.add('hidden');
+    
+    // Check if redirected from OAuth callback
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auth') === 'success') {
+        // Remove the auth parameter from URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Show success message
+        showGoogleSuccess('Successfully connected to Google Calendar!');
+    }
     
     // Check if user is authenticated
     await checkGoogleAuthStatus();

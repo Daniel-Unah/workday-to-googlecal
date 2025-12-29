@@ -20,13 +20,15 @@ app.use(express.static('public'));
 // Session middleware
 app.use(session({
     secret: process.env.SESSION_SECRET || 'workday-to-googlecal-secret-key',
-    resave: false,
-    saveUninitialized: false,
+    resave: true, // Force save session on each request to help with popup windows
+    saveUninitialized: true, // Save uninitialized sessions (needed for OAuth state)
+    rolling: true, // Reset expiration on activity
     cookie: {
-        secure: false, // Set to true in production with HTTPS
+        secure: process.env.NODE_ENV === 'production', // HTTPS in production
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: 'lax', // Allow cookies on OAuth redirects
-        httpOnly: true // Prevent XSS attacks
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for popups in production (requires HTTPS)
+        httpOnly: true, // Prevent XSS attacks
+        path: '/' // Ensure cookie is available for all paths
     }
 }));
 
@@ -91,12 +93,18 @@ app.get('/api/auth/google/url', (req, res) => {
         const state = crypto.randomBytes(32).toString('hex');
         req.session.oauthState = state;
         
+        console.log('Generated OAuth state:', state);
+        console.log('Session ID:', req.sessionID);
+        console.log('Session userId:', req.session.userId);
+        
         // Save session before sending response to ensure state is persisted
         req.session.save((err) => {
             if (err) {
                 console.error('Error saving session:', err);
                 return res.status(500).json({ error: 'Failed to save session' });
             }
+            
+            console.log('Session saved successfully. State stored:', req.session.oauthState);
             
             const calendarManager = new GoogleCalendarManager(req.session.userId);
             const authUrl = calendarManager.getAuthUrl(state);
@@ -115,6 +123,13 @@ app.get('/auth/google/callback', async (req, res) => {
     try {
         const { code, state } = req.query;
         
+        console.log('OAuth callback received');
+        console.log('Session ID:', req.sessionID);
+        console.log('Session exists:', !!req.session);
+        console.log('Session data:', req.session ? JSON.stringify(req.session, null, 2) : 'No session');
+        console.log('Received state from query:', state);
+        console.log('Stored state in session:', req.session?.oauthState);
+        
         if (!code) {
             return res.status(400).send('Authorization code not provided');
         }
@@ -127,6 +142,26 @@ app.get('/auth/google/callback', async (req, res) => {
             console.error('Session ID:', req.sessionID);
             console.error('Session exists:', !!req.session);
             console.error('Session userId:', req.session?.userId);
+            console.error('All session keys:', req.session ? Object.keys(req.session) : 'No session');
+            
+            // If session doesn't exist or state is missing, provide helpful error
+            if (!req.session || !req.session.oauthState) {
+                return res.status(403).send(`
+                    <html>
+                        <body>
+                            <h2>Session Expired</h2>
+                            <p>The authentication session has expired. This can happen if:</p>
+                            <ul>
+                                <li>You took too long to complete the authorization</li>
+                                <li>Your browser cookies were cleared</li>
+                                <li>The server was restarted</li>
+                            </ul>
+                            <p>Please <a href="/">go back to the app</a> and try connecting again.</p>
+                        </body>
+                    </html>
+                `);
+            }
+            
             return res.status(403).send('State validation failed. Possible CSRF attack detected. Please try connecting again.');
         }
         
@@ -150,19 +185,8 @@ app.get('/auth/google/callback', async (req, res) => {
             throw tokenError;
         }
         
-        res.send(`
-            <html>
-                <body>
-                    <h2>✅ Successfully authenticated with Google Calendar!</h2>
-                    <p>You can now close this window and return to the main application.</p>
-                    <script>
-                        setTimeout(() => {
-                            window.close();
-                        }, 3000);
-                    </script>
-                </body>
-            </html>
-        `);
+        // Redirect back to the app after successful authentication
+        res.redirect('/?auth=success');
     } catch (error) {
         console.error('OAuth callback error:', error);
         res.status(500).send(`
