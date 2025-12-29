@@ -24,7 +24,9 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         secure: false, // Set to true in production with HTTPS
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: 'lax', // Allow cookies on OAuth redirects
+        httpOnly: true // Prevent XSS attacks
     }
 }));
 
@@ -83,17 +85,23 @@ app.get('/api/auth/google/url', (req, res) => {
         // Generate a unique user ID for this session
         if (!req.session.userId) {
             req.session.userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            req.session.save();
         }
         
         // Generate a CSRF state token and store it in the session
         const state = crypto.randomBytes(32).toString('hex');
         req.session.oauthState = state;
-        req.session.save();
         
-        const calendarManager = new GoogleCalendarManager(req.session.userId);
-        const authUrl = calendarManager.getAuthUrl(state);
-        res.json({ authUrl });
+        // Save session before sending response to ensure state is persisted
+        req.session.save((err) => {
+            if (err) {
+                console.error('Error saving session:', err);
+                return res.status(500).json({ error: 'Failed to save session' });
+            }
+            
+            const calendarManager = new GoogleCalendarManager(req.session.userId);
+            const authUrl = calendarManager.getAuthUrl(state);
+            res.json({ authUrl });
+        });
     } catch (error) {
         console.error('Error generating auth URL:', error);
         res.status(500).json({ error: error.message });
@@ -113,8 +121,13 @@ app.get('/auth/google/callback', async (req, res) => {
         
         // Verify the state parameter to prevent CSRF attacks
         if (!state || state !== req.session.oauthState) {
-            console.error('State mismatch! Possible CSRF attack. Expected:', req.session.oauthState, 'Got:', state);
-            return res.status(403).send('State validation failed. Possible CSRF attack detected.');
+            console.error('State mismatch! Possible CSRF attack.');
+            console.error('Expected state:', req.session.oauthState);
+            console.error('Received state:', state);
+            console.error('Session ID:', req.sessionID);
+            console.error('Session exists:', !!req.session);
+            console.error('Session userId:', req.session?.userId);
+            return res.status(403).send('State validation failed. Possible CSRF attack detected. Please try connecting again.');
         }
         
         // Clear the used state
