@@ -139,8 +139,16 @@ app.get('/api/auth/google/url', (req, res) => {
             
             console.log('Session saved successfully. State stored:', req.session.oauthState);
             
-            // Create redirect URI based on request origin
+            // Use the detected origin for OAuth callback (will be schedulesync.live when accessed from there)
+            // This requires the redirect URI to be configured in Google Cloud Console
             const redirectUri = `${origin}/auth/google/callback`;
+            console.log('Using redirect URI:', redirectUri);
+            console.log('IMPORTANT: Make sure this exact URI is configured in Google Cloud Console');
+            console.log('  Go to: APIs & Services > Credentials > OAuth 2.0 Client ID');
+            console.log('  Add to Authorized redirect URIs:', redirectUri);
+            
+            // Store the redirect URI in session so callback can use the same one
+            req.session.redirectUri = redirectUri;
             
             const calendarManager = new GoogleCalendarManager(req.session.userId);
             // Override redirect URI with the detected origin
@@ -203,14 +211,23 @@ app.get('/auth/google/callback', async (req, res) => {
             return res.status(403).send('State validation failed. Possible CSRF attack detected. Please try connecting again.');
         }
         
-        // Clear the used state
+        // Clear the used state and redirect URI
         delete req.session.oauthState;
+        delete req.session.redirectUri;
 
         if (!req.session.userId) {
             return res.status(400).send('Session expired. Please try again.');
         }
 
         const calendarManager = new GoogleCalendarManager(req.session.userId);
+        
+        // Use the same redirect URI that was used to generate the auth URL
+        if (req.session.redirectUri) {
+            calendarManager.redirectUri = req.session.redirectUri;
+            console.log('Using stored redirect URI from session:', req.session.redirectUri);
+        } else {
+            console.warn('No redirect URI in session, using default:', calendarManager.redirectUri);
+        }
         
         try {
             const tokens = await calendarManager.getTokens(code);
@@ -220,6 +237,14 @@ app.get('/auth/google/callback', async (req, res) => {
                 req.session.save();
             }
         } catch (tokenError) {
+            console.error('Token exchange error:', tokenError.message);
+            if (tokenError.message.includes('redirect_uri_mismatch')) {
+                console.error('Redirect URI mismatch!');
+                console.error('The redirect URI used was:', calendarManager.redirectUri);
+                console.error('Make sure this EXACT URI is in Google Cloud Console:');
+                console.error('  APIs & Services > Credentials > OAuth 2.0 Client ID');
+                console.error('  Authorized redirect URIs should include:', calendarManager.redirectUri);
+            }
             throw tokenError;
         }
         
