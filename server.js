@@ -12,6 +12,9 @@ const GoogleCalendarManager = require('./scripts/google-calendar');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy (needed for Railway and custom domains)
+app.set('trust proxy', true);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -26,9 +29,11 @@ app.use(session({
     cookie: {
         secure: process.env.NODE_ENV === 'production', // HTTPS in production
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for popups in production (requires HTTPS)
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-domain in production (requires HTTPS)
         httpOnly: true, // Prevent XSS attacks
-        path: '/' // Ensure cookie is available for all paths
+        path: '/', // Ensure cookie is available for all paths
+        // Don't set domain - let it default to the request domain
+        // This allows cookies to work with both custom domain and Railway domain
     }
 }));
 
@@ -84,6 +89,33 @@ app.post('/api/auth/google/disconnect', (req, res) => {
  */
 app.get('/api/auth/google/url', (req, res) => {
     try {
+        // Detect the request origin (custom domain or Railway domain)
+        const protocol = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
+        const origin = `${protocol}://${host}`;
+        
+        // Security: Whitelist allowed domains to prevent open redirect attacks
+        const allowedDomains = [
+            'schedulesync.live',
+            'workday-to-googlecal-production.up.railway.app',
+            'localhost:3000',
+            '127.0.0.1:3000'
+        ];
+        
+        // Extract domain from host (remove port if present)
+        const hostDomain = host.split(':')[0];
+        const isAllowed = allowedDomains.some(domain => 
+            hostDomain === domain || hostDomain.endsWith('.' + domain)
+        );
+        
+        if (!isAllowed) {
+            console.error('Unauthorized domain attempted OAuth:', hostDomain);
+            return res.status(403).json({ error: 'Unauthorized domain' });
+        }
+        
+        // Store the origin in session so callback can redirect back to the same domain
+        req.session.origin = origin;
+        
         // Generate a unique user ID for this session
         if (!req.session.userId) {
             req.session.userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -96,6 +128,7 @@ app.get('/api/auth/google/url', (req, res) => {
         console.log('Generated OAuth state:', state);
         console.log('Session ID:', req.sessionID);
         console.log('Session userId:', req.session.userId);
+        console.log('Request origin:', origin);
         
         // Save session before sending response to ensure state is persisted
         req.session.save((err) => {
@@ -106,7 +139,12 @@ app.get('/api/auth/google/url', (req, res) => {
             
             console.log('Session saved successfully. State stored:', req.session.oauthState);
             
+            // Create redirect URI based on request origin
+            const redirectUri = `${origin}/auth/google/callback`;
+            
             const calendarManager = new GoogleCalendarManager(req.session.userId);
+            // Override redirect URI with the detected origin
+            calendarManager.redirectUri = redirectUri;
             const authUrl = calendarManager.getAuthUrl(state);
             res.json({ authUrl });
         });
@@ -186,7 +224,40 @@ app.get('/auth/google/callback', async (req, res) => {
         }
         
         // Redirect back to the app after successful authentication
-        res.redirect('/?auth=success');
+        // Use the stored origin to redirect to the same domain the user came from
+        let redirectUrl = '/?auth=success';
+        
+        if (req.session.origin) {
+            // Security: Validate the stored origin against whitelist
+            const allowedDomains = [
+                'schedulesync.live',
+                'workday-to-googlecal-production.up.railway.app',
+                'localhost:3000',
+                '127.0.0.1:3000'
+            ];
+            
+            try {
+                const originUrl = new URL(req.session.origin);
+                const hostDomain = originUrl.hostname;
+                const isAllowed = allowedDomains.some(domain => 
+                    hostDomain === domain || hostDomain.endsWith('.' + domain)
+                );
+                
+                if (isAllowed) {
+                    redirectUrl = `${req.session.origin}/?auth=success`;
+                } else {
+                    console.error('Invalid origin in session:', req.session.origin);
+                }
+            } catch (e) {
+                console.error('Invalid origin URL in session:', req.session.origin);
+            }
+        }
+        
+        // Clear the origin from session after use
+        delete req.session.origin;
+        req.session.save();
+        
+        res.redirect(redirectUrl);
     } catch (error) {
         console.error('OAuth callback error:', error);
         res.status(500).send(`
