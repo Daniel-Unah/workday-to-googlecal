@@ -87,18 +87,20 @@ app.get('/api/auth/google/url', (req, res) => {
         const allowedDomains = [
             'schedulesync.live',
             'workday-to-googlecal-production.up.railway.app',
-            'localhost:3000',
-            '127.0.0.1:3000'
+            'localhost',
+            '127.0.0.1'
         ];
         
         // Extract domain from host (remove port if present)
         const hostDomain = host.split(':')[0];
         const isAllowed = allowedDomains.some(domain => 
-            hostDomain === domain || hostDomain.endsWith('.' + domain)
-        );
+            hostDomain === domain || 
+            hostDomain.endsWith('.' + domain)
+        ) || hostDomain === 'localhost' || hostDomain === '127.0.0.1';
         
         if (!isAllowed) {
             console.error('Unauthorized domain attempted OAuth:', hostDomain);
+            console.error('Full host:', host);
             return res.status(403).json({ error: 'Unauthorized domain' });
         }
         
@@ -259,8 +261,8 @@ app.get('/auth/google/callback', async (req, res) => {
             const allowedDomains = [
                 'schedulesync.live',
                 'workday-to-googlecal-production.up.railway.app',
-                'localhost:3000',
-                '127.0.0.1:3000'
+                'localhost',
+                '127.0.0.1'
             ];
             
             try {
@@ -268,7 +270,7 @@ app.get('/auth/google/callback', async (req, res) => {
                 const hostDomain = originUrl.hostname;
                 const isAllowed = allowedDomains.some(domain => 
                     hostDomain === domain || hostDomain.endsWith('.' + domain)
-                );
+                ) || hostDomain === 'localhost' || hostDomain === '127.0.0.1';
                 
                 if (isAllowed) {
                     redirectUrl = `${req.session.origin}/?auth=success`;

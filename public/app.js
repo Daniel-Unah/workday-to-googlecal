@@ -81,6 +81,13 @@ function parseExcelFile(file) {
             displayPreview(courses);
             document.getElementById('downloadBtn').disabled = false;
             
+            // Save courses to sessionStorage so they persist across page reloads (e.g., OAuth redirect)
+            try {
+                sessionStorage.setItem('courses', JSON.stringify(courses));
+            } catch (e) {
+                console.warn('Could not save courses to sessionStorage:', e);
+            }
+            
             // Enable Google Calendar button if authenticated
             if (isGoogleAuthenticated) {
                 document.getElementById('addToGoogleBtn').disabled = false;
@@ -894,6 +901,12 @@ function getRecurrenceRule(daysStr) {
 
 function resetConverter() {
     courses = [];
+    // Clear courses from sessionStorage as well
+    try {
+        sessionStorage.removeItem('courses');
+    } catch (e) {
+        console.warn('Could not clear courses from sessionStorage:', e);
+    }
     document.getElementById('fileInput').value = '';
     document.getElementById('downloadBtn').disabled = true;
     document.getElementById('preview').innerHTML = '';
@@ -914,6 +927,17 @@ document.getElementById('googleAuthBtn').addEventListener('click', async () => {
         const data = await response.json();
         
         if (data.authUrl) {
+            // Save courses to sessionStorage before redirecting (in case they exist)
+            // This ensures courses persist across the OAuth redirect
+            if (courses && courses.length > 0) {
+                try {
+                    sessionStorage.setItem('courses', JSON.stringify(courses));
+                    console.log('Saved courses to sessionStorage before OAuth redirect');
+                } catch (e) {
+                    console.warn('Could not save courses to sessionStorage:', e);
+                }
+            }
+            
             // Use full-page redirect instead of popup for better session cookie support
             // The OAuth callback will redirect back to the app after authentication
             window.location.href = data.authUrl;
@@ -1132,6 +1156,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('googleAuthSection').classList.remove('hidden');
     document.getElementById('googleCalendarSection').classList.add('hidden');
     
+    // Restore courses from sessionStorage if they exist (e.g., after OAuth redirect)
+    try {
+        const savedCourses = sessionStorage.getItem('courses');
+        if (savedCourses) {
+            courses = JSON.parse(savedCourses);
+            if (courses && courses.length > 0) {
+                console.log(`Restored ${courses.length} courses from sessionStorage`);
+                displayPreview(courses);
+                document.getElementById('downloadBtn').disabled = false;
+                // Don't show success message - courses were already displayed before
+            }
+        }
+    } catch (e) {
+        console.warn('Could not restore courses from sessionStorage:', e);
+    }
+    
     // Check if redirected from OAuth callback
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('auth') === 'success') {
@@ -1141,6 +1181,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         showGoogleSuccess('Successfully connected to Google Calendar!');
     }
     
-    // Check if user is authenticated
+    // Check if user is authenticated (this will also enable "Add to Google Calendar" button if courses exist)
     await checkGoogleAuthStatus();
+    
+    // If courses were restored and user is authenticated, ensure the button is enabled
+    if (courses && courses.length > 0 && isGoogleAuthenticated) {
+        document.getElementById('addToGoogleBtn').disabled = false;
+    }
 });
