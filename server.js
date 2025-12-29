@@ -3,7 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs-extra');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -20,21 +20,16 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Session middleware
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'workday-to-googlecal-secret-key',
-    resave: true, // Force save session on each request to help with popup windows
-    saveUninitialized: true, // Save uninitialized sessions (needed for OAuth state)
-    rolling: true, // Reset expiration on activity
-    cookie: {
-        secure: process.env.NODE_ENV === 'production', // HTTPS in production
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-domain in production (requires HTTPS)
-        httpOnly: true, // Prevent XSS attacks
-        path: '/', // Ensure cookie is available for all paths
-        // Don't set domain - let it default to the request domain
-        // This allows cookies to work with both custom domain and Railway domain
-    }
+// Session middleware using cookie-session (stores data in cookie, no memory leaks)
+app.use(cookieSession({
+    name: 'session',
+    keys: [process.env.SESSION_SECRET || 'workday-to-googlecal-secret-key'],
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    secure: process.env.NODE_ENV === 'production', // HTTPS in production
+    httpOnly: true, // Prevent XSS attacks
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-domain in production (requires HTTPS)
+    // Don't set domain - let it default to the request domain
+    // This allows cookies to work with both custom domain and Railway domain
 }));
 
 // Configure multer for file uploads
@@ -67,14 +62,9 @@ app.post('/api/auth/google/disconnect', (req, res) => {
             // Clear session tokens (for production)
             delete req.session.googleTokens;
             
-            // Save session to ensure changes persist
-            req.session.save((err) => {
-                if (err) {
-                    console.error('Error saving session:', err);
-                    return res.status(500).json({ error: 'Failed to clear session' });
-                }
-                res.json({ success: true, message: 'Disconnected successfully' });
-            });
+            // cookie-session auto-saves, but we can explicitly save
+            req.session.save();
+            res.json({ success: true, message: 'Disconnected successfully' });
         } else {
             res.json({ success: true, message: 'Disconnected successfully' });
         }
@@ -130,40 +120,28 @@ app.get('/api/auth/google/url', (req, res) => {
         console.log('Session userId:', req.session.userId);
         console.log('Request origin:', origin);
         
-        // Save session before sending response to ensure state is persisted
-        req.session.save((err) => {
-            if (err) {
-                console.error('Error saving session:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
-            }
-            
-            console.log('Session saved successfully. State stored:', req.session.oauthState);
-            
-            // Use the detected origin for OAuth callback (will be schedulesync.live when accessed from there)
-            // This requires the redirect URI to be configured in Google Cloud Console
-            const redirectUri = `${origin}/auth/google/callback`;
-            console.log('Using redirect URI:', redirectUri);
-            console.log('IMPORTANT: Make sure this exact URI is configured in Google Cloud Console');
-            console.log('  Go to: APIs & Services > Credentials > OAuth 2.0 Client ID');
-            console.log('  Add to Authorized redirect URIs:', redirectUri);
-            
-            // Store the redirect URI in session so callback can use the same one
-            req.session.redirectUri = redirectUri;
-            // Force save the session again to ensure redirectUri is persisted
-            req.session.save((saveErr) => {
-                if (saveErr) {
-                    console.error('Error saving redirectUri to session:', saveErr);
-                } else {
-                    console.log('Redirect URI saved to session:', redirectUri);
-                }
-            });
-            
-            const calendarManager = new GoogleCalendarManager(req.session.userId);
-            // Override redirect URI with the detected origin
-            calendarManager.redirectUri = redirectUri;
-            const authUrl = calendarManager.getAuthUrl(state);
-            res.json({ authUrl });
-        });
+        // Use the detected origin for OAuth callback (will be schedulesync.live when accessed from there)
+        // This requires the redirect URI to be configured in Google Cloud Console
+        const redirectUri = `${origin}/auth/google/callback`;
+        console.log('Using redirect URI:', redirectUri);
+        console.log('IMPORTANT: Make sure this exact URI is configured in Google Cloud Console');
+        console.log('  Go to: APIs & Services > Credentials > OAuth 2.0 Client ID');
+        console.log('  Add to Authorized redirect URIs:', redirectUri);
+        
+        // Store the redirect URI in session so callback can use the same one
+        req.session.redirectUri = redirectUri;
+        
+        // cookie-session auto-saves, but we can explicitly save to ensure it's persisted
+        // save() is synchronous with cookie-session
+        req.session.save();
+        console.log('Session saved successfully. State stored:', req.session.oauthState);
+        console.log('Redirect URI saved to session:', redirectUri);
+        
+        const calendarManager = new GoogleCalendarManager(req.session.userId);
+        // Override redirect URI with the detected origin
+        calendarManager.redirectUri = redirectUri;
+        const authUrl = calendarManager.getAuthUrl(state);
+        res.json({ authUrl });
     } catch (error) {
         console.error('Error generating auth URL:', error);
         res.status(500).json({ error: error.message });
@@ -258,6 +236,7 @@ app.get('/auth/google/callback', async (req, res) => {
         try {
             const tokens = await calendarManager.getTokens(code);
             // Store tokens in session for production
+            // cookie-session auto-saves, but we can explicitly save
             if (process.env.NODE_ENV === 'production') {
                 req.session.googleTokens = tokens;
                 req.session.save();
@@ -306,6 +285,7 @@ app.get('/auth/google/callback', async (req, res) => {
         
         // Clear the origin from session after use
         delete req.session.origin;
+        // cookie-session auto-saves, but we can explicitly save
         req.session.save();
         
         res.redirect(redirectUrl);
