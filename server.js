@@ -149,6 +149,14 @@ app.get('/api/auth/google/url', (req, res) => {
             
             // Store the redirect URI in session so callback can use the same one
             req.session.redirectUri = redirectUri;
+            // Force save the session again to ensure redirectUri is persisted
+            req.session.save((saveErr) => {
+                if (saveErr) {
+                    console.error('Error saving redirectUri to session:', saveErr);
+                } else {
+                    console.log('Redirect URI saved to session:', redirectUri);
+                }
+            });
             
             const calendarManager = new GoogleCalendarManager(req.session.userId);
             // Override redirect URI with the detected origin
@@ -175,6 +183,8 @@ app.get('/auth/google/callback', async (req, res) => {
         console.log('Session data:', req.session ? JSON.stringify(req.session, null, 2) : 'No session');
         console.log('Received state from query:', state);
         console.log('Stored state in session:', req.session?.oauthState);
+        console.log('Redirect URI in session:', req.session?.redirectUri);
+        console.log('All session properties:', req.session ? Object.keys(req.session) : 'No session');
         
         if (!code) {
             return res.status(400).send('Authorization code not provided');
@@ -210,23 +220,39 @@ app.get('/auth/google/callback', async (req, res) => {
             
             return res.status(403).send('State validation failed. Possible CSRF attack detected. Please try connecting again.');
         }
-        
-        // Clear the used state and redirect URI
-        delete req.session.oauthState;
-        delete req.session.redirectUri;
 
         if (!req.session.userId) {
             return res.status(400).send('Session expired. Please try again.');
         }
 
+        // Get redirect URI from session BEFORE clearing anything
+        // Try multiple ways to get it in case of session serialization issues
+        let redirectUri = req.session.redirectUri;
+        if (!redirectUri && req.session.origin) {
+            // Fallback: reconstruct from origin if redirectUri is missing
+            redirectUri = `${req.session.origin}/auth/google/callback`;
+            console.log('Redirect URI not in session, reconstructing from origin:', redirectUri);
+        }
+        
+        console.log('Redirect URI from session (direct):', req.session.redirectUri);
+        console.log('Redirect URI variable:', redirectUri);
+        console.log('All session keys before cleanup:', Object.keys(req.session));
+        
+        // Clear the used state and redirect URI AFTER we've saved them
+        delete req.session.oauthState;
+        delete req.session.redirectUri;
+
         const calendarManager = new GoogleCalendarManager(req.session.userId);
         
         // Use the same redirect URI that was used to generate the auth URL
-        if (req.session.redirectUri) {
-            calendarManager.redirectUri = req.session.redirectUri;
-            console.log('Using stored redirect URI from session:', req.session.redirectUri);
+        if (redirectUri) {
+            calendarManager.redirectUri = redirectUri;
+            console.log('Using stored redirect URI from session:', redirectUri);
         } else {
-            console.warn('No redirect URI in session, using default:', calendarManager.redirectUri);
+            console.error('ERROR: No redirect URI in session and cannot reconstruct!');
+            console.error('Session keys:', Object.keys(req.session));
+            console.error('Session origin:', req.session.origin);
+            console.error('Using default (this will likely fail):', calendarManager.redirectUri);
         }
         
         try {
