@@ -62,8 +62,7 @@ app.post('/api/auth/google/disconnect', (req, res) => {
             // Clear session tokens (for production)
             delete req.session.googleTokens;
             
-            // cookie-session auto-saves, but we can explicitly save
-            req.session.save();
+            // cookie-session automatically saves when response is sent
             res.json({ success: true, message: 'Disconnected successfully' });
         } else {
             res.json({ success: true, message: 'Disconnected successfully' });
@@ -116,7 +115,7 @@ app.get('/api/auth/google/url', (req, res) => {
         req.session.oauthState = state;
         
         console.log('Generated OAuth state:', state);
-        console.log('Session ID:', req.sessionID);
+        // cookie-session doesn't expose sessionID the same way
         console.log('Session userId:', req.session.userId);
         console.log('Request origin:', origin);
         
@@ -131,11 +130,10 @@ app.get('/api/auth/google/url', (req, res) => {
         // Store the redirect URI in session so callback can use the same one
         req.session.redirectUri = redirectUri;
         
-        // cookie-session auto-saves, but we can explicitly save to ensure it's persisted
-        // save() is synchronous with cookie-session
-        req.session.save();
-        console.log('Session saved successfully. State stored:', req.session.oauthState);
-        console.log('Redirect URI saved to session:', redirectUri);
+        // cookie-session automatically saves when response is sent
+        // No need to call save() - it's handled automatically
+        console.log('Session data stored. State:', req.session.oauthState);
+        console.log('Redirect URI stored in session:', redirectUri);
         
         const calendarManager = new GoogleCalendarManager(req.session.userId);
         // Override redirect URI with the detected origin
@@ -156,7 +154,7 @@ app.get('/auth/google/callback', async (req, res) => {
         const { code, state } = req.query;
         
         console.log('OAuth callback received');
-        console.log('Session ID:', req.sessionID);
+        // cookie-session doesn't expose sessionID the same way
         console.log('Session exists:', !!req.session);
         console.log('Session data:', req.session ? JSON.stringify(req.session, null, 2) : 'No session');
         console.log('Received state from query:', state);
@@ -173,7 +171,7 @@ app.get('/auth/google/callback', async (req, res) => {
             console.error('State mismatch! Possible CSRF attack.');
             console.error('Expected state:', req.session.oauthState);
             console.error('Received state:', state);
-            console.error('Session ID:', req.sessionID);
+            // cookie-session doesn't expose sessionID the same way
             console.error('Session exists:', !!req.session);
             console.error('Session userId:', req.session?.userId);
             console.error('All session keys:', req.session ? Object.keys(req.session) : 'No session');
@@ -236,10 +234,9 @@ app.get('/auth/google/callback', async (req, res) => {
         try {
             const tokens = await calendarManager.getTokens(code);
             // Store tokens in session for production
-            // cookie-session auto-saves, but we can explicitly save
+            // cookie-session automatically saves when response is sent
             if (process.env.NODE_ENV === 'production') {
                 req.session.googleTokens = tokens;
-                req.session.save();
             }
         } catch (tokenError) {
             console.error('Token exchange error:', tokenError.message);
@@ -285,8 +282,7 @@ app.get('/auth/google/callback', async (req, res) => {
         
         // Clear the origin from session after use
         delete req.session.origin;
-        // cookie-session auto-saves, but we can explicitly save
-        req.session.save();
+        // cookie-session automatically saves when response is sent
         
         res.redirect(redirectUrl);
     } catch (error) {
