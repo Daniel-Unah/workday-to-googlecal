@@ -63,41 +63,80 @@
 <body>
     <div class="privacy-content">
         <h1>Privacy Policy</h1>
-        <p class="last-updated">Last Updated: December 24, 2025</p>
+        <p class="last-updated">Last Updated: December 30, 2025</p>
 
-        <h2>Data Collection</h2>
-        <p>This app processes your schedule data locally in your browser. When you choose to connect to Google Calendar:</p>
+        <h2>1. Data Accessed</h2>
+        <p>ScheduleSync accesses the following types of Google user data through the Google Calendar API:</p>
         <ul>
-            <li>We store OAuth tokens temporarily to access your Google Calendar</li>
-            <li>We use your schedule data only to create calendar events</li>
-            <li>Uploaded files are processed in memory and not stored</li>
+            <li><strong>Calendar List:</strong> We access the list of calendars you can view and manage to allow you to select which calendar to add events to.</li>
+            <li><strong>Calendar Events:</strong> We access calendar events only to create new events from your course schedule and to delete events that were previously created by this application.</li>
+        </ul>
+        <p>We do not read, modify, or delete any existing calendar events that you did not create through ScheduleSync.</p>
+
+        <h2>2. Data Usage</h2>
+        <p>How ScheduleSync uses the Google user data it accesses:</p>
+        <ul>
+            <li><strong>Calendar List:</strong> Used solely to display your available calendars in a dropdown menu so you can choose which calendar to use for your course schedule events.</li>
+            <li><strong>Creating Events:</strong> Your course schedule data (parsed from uploaded Excel files) is used to create recurring calendar events in your selected Google Calendar. This includes course titles, meeting times, days, locations, and instructor information.</li>
+            <li><strong>Deleting Events:</strong> We only delete calendar events that were created by ScheduleSync, identified through batch IDs. We do not access or delete any other calendar events.</li>
+        </ul>
+        <p>All processing of your schedule data happens in your browser or on our servers temporarily. Uploaded Excel files are processed in memory and immediately discarded—they are never permanently stored.</p>
+
+        <h2>3. Data Sharing</h2>
+        <p><strong>We do not share Google user data with any third parties.</strong></p>
+        <p>Google user data is only sent to Google's servers when you explicitly choose to add events to your calendar. This is necessary for the app's core functionality of creating calendar events.</p>
+        <ul>
+            <li>We do not sell, trade, or share your data with advertisers, analytics services, or any other external parties.</li>
+            <li>We do not use your data for marketing purposes.</li>
+            <li>We do not transfer your data to third-party services for processing or storage.</li>
         </ul>
 
-        <h2>Data Storage</h2>
-        <p>
-            OAuth tokens are stored in encrypted sessions and expire after 24 hours of inactivity. 
-            We do not permanently store any personal information, schedule data, or calendar content.
-        </p>
+        <h2>4. Data Storage & Protection</h2>
+        <p>How we securely store and protect your data:</p>
+        <ul>
+            <li><strong>OAuth Tokens:</strong> Stored in encrypted session cookies that are transmitted only over HTTPS in production. Tokens are stored temporarily and expire after 24 hours of inactivity.</li>
+            <li><strong>Session Data:</strong> All session data is stored in secure, HTTP-only cookies that cannot be accessed by JavaScript, preventing XSS attacks.</li>
+            <li><strong>Uploaded Files:</strong> Excel files are processed entirely in memory and are never written to disk or stored permanently on our servers.</li>
+            <li><strong>Course Data:</strong> Your parsed course schedule data is temporarily stored in your browser's sessionStorage during your session and is automatically cleared when you close the browser tab.</li>
+            <li><strong>Server Security:</strong> Our servers use HTTPS encryption for all data transmission, and we follow industry-standard security practices.</li>
+        </ul>
+        <p>We do not maintain any permanent database or long-term storage of your personal information, schedule data, or calendar content.</p>
 
-        <h2>Google API Services</h2>
+        <h2>5. Data Retention & Deletion</h2>
+        <p><strong>Data Retention:</strong></p>
+        <ul>
+            <li><strong>OAuth Tokens:</strong> Retained only for the duration of your active session, with a maximum retention period of 24 hours from your last activity. Tokens are automatically deleted when they expire or when you disconnect.</li>
+            <li><strong>Session Data:</strong> Automatically deleted after 24 hours of inactivity or immediately when you disconnect your Google Calendar account.</li>
+            <li><strong>Uploaded Files:</strong> Not retained—files are processed in memory and immediately discarded.</li>
+            <li><strong>Course Schedule Data:</strong> Stored only in your browser's sessionStorage during your active session and cleared when you close the browser tab.</li>
+        </ul>
+        <p><strong>Data Deletion:</strong></p>
+        <p>You have full control over your data and can request deletion at any time:</p>
+        <ul>
+            <li><strong>Disconnect from Google Calendar:</strong> Click the "Disconnect" button in the app, which immediately deletes all stored OAuth tokens and session data from our servers.</li>
+            <li><strong>Revoke Access via Google:</strong> You can revoke ScheduleSync's access to your Google Calendar at any time through your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">Google Account permissions page</a>. This immediately prevents us from accessing your calendar data.</li>
+            <li><strong>Delete Calendar Events:</strong> Use the "Remove from Calendar" button in the app to delete all events created by ScheduleSync, or delete them manually from your Google Calendar.</li>
+            <li><strong>Clear Browser Data:</strong> Clearing your browser's cookies and sessionStorage will remove all locally stored course data.</li>
+        </ul>
+        <p>We do not retain any data after you disconnect or your session expires. There is no separate data deletion process required, as no data is permanently stored.</p>
+
+        <h2>6. Google API Services User Data Policy</h2>
         <p>
-            This app's use of information received from Google APIs adheres to the 
+            ScheduleSync's use of information received from Google APIs adheres to the 
             <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">
                 Google API Services User Data Policy
-            </a>.
+            </a>, including the Limited Use requirements.
         </p>
 
-        <h2>Your Rights</h2>
-        <p>
-            You can disconnect your Google Calendar at any time, which immediately deletes all stored tokens. 
-            You can also revoke access through your Google Account settings.
-        </p>
-
-        <h2>No Third-Party Sharing</h2>
-        <p>
-            We do not sell, trade, or share your information with third parties. 
-            Data is only sent to Google Calendar API when you choose to add events to your calendar.
-        </p>
+        <h2>7. Your Rights</h2>
+        <p>You have the right to:</p>
+        <ul>
+            <li>Access and review what data we have access to through your Google Account settings</li>
+            <li>Disconnect ScheduleSync from your Google Calendar at any time</li>
+            <li>Revoke our access through your Google Account permissions</li>
+            <li>Delete any calendar events created by ScheduleSync</li>
+            <li>Request information about how your data is used (though we maintain no permanent records)</li>
+        </ul>
 
         <a href="/" class="back-link">← Back to App</a>
     </div>
