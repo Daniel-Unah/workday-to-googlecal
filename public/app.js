@@ -1097,6 +1097,15 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
         const result = await response.json();
         
         if (result.success) {
+            // Track event creation in GA4
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'events_added_to_calendar', {
+                    'event_category': 'Calendar',
+                    'event_label': 'Google Calendar',
+                    'value': result.eventsCreated
+                });
+            }
+            
             // Store the batch ID for deletion
             currentBatchId = result.batchId;
             
@@ -1208,6 +1217,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check if redirected from OAuth callback
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('auth') === 'success') {
+        // Track successful Google authentication in GA4
+        if (typeof gtag !== 'undefined') {
+            gtag('event', 'google_auth_success', {
+                'event_category': 'Authentication',
+                'event_label': 'Google Calendar',
+                'value': 1
+            });
+        }
+        
         // Remove the auth parameter from URL
         window.history.replaceState({}, document.title, window.location.pathname);
         // Show success message
