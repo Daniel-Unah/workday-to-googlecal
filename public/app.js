@@ -14,6 +14,14 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 
 // Download button handling
 document.getElementById('downloadBtn').addEventListener('click', function() {
+    // Track ICS download
+    if (typeof gtag !== 'undefined') {
+        gtag('event', 'ics_download', {
+            'event_category': 'Download',
+            'event_label': 'ICS File',
+            'value': courses.length
+        });
+    }
     downloadICS(courses);
 });
 
@@ -81,6 +89,15 @@ function parseExcelFile(file) {
             displayPreview(courses);
             document.getElementById('downloadBtn').disabled = false;
             
+            // Track successful file upload and parsing
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'file_upload_success', {
+                    'event_category': 'File Upload',
+                    'event_label': 'Excel File',
+                    'value': courses.length
+                });
+            }
+            
             // Save courses to sessionStorage so they persist across page reloads (e.g., OAuth redirect)
             try {
                 const coursesJson = JSON.stringify(courses);
@@ -106,6 +123,15 @@ function parseExcelFile(file) {
         } catch (error) {
             console.error('Error parsing Excel:', error);
             showError('Error reading Excel file: ' + error.message);
+            
+            // Track file parse errors
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'file_parse_error', {
+                    'event_category': 'File Upload',
+                    'event_label': 'Parse Error',
+                    'value': 0
+                });
+            }
         }
     };
     reader.readAsArrayBuffer(file);
@@ -930,6 +956,15 @@ document.getElementById('googleAuthBtn').addEventListener('click', async () => {
             return;
         }
 
+        // Track Google auth initiation
+        if (typeof gtag !== 'undefined') {
+            gtag('event', 'google_auth_initiated', {
+                'event_category': 'Authentication',
+                'event_label': 'Google Calendar',
+                'value': 1
+            });
+        }
+
         // Get Google OAuth URL from server
         const response = await fetch('/api/auth/google/url');
         const data = await response.json();
@@ -972,6 +1007,15 @@ document.getElementById('disconnectGoogleBtn').addEventListener('click', async (
         const data = await response.json();
         
         if (response.ok && data.success) {
+            // Track disconnect
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'google_auth_disconnect', {
+                    'event_category': 'Authentication',
+                    'event_label': 'Google Calendar',
+                    'value': 1
+                });
+            }
+            
             // Clear authentication state
             isGoogleAuthenticated = false;
             document.getElementById('googleAuthSection').classList.remove('hidden');
@@ -1175,6 +1219,15 @@ document.getElementById('removeEventsBtn').addEventListener('click', async () =>
         const result = await response.json();
         
         if (result.success) {
+            // Track event removal
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'events_removed_from_calendar', {
+                    'event_category': 'Calendar',
+                    'event_label': 'Google Calendar',
+                    'value': result.deletedCount
+                });
+            }
+            
             showGoogleSuccess(`Successfully removed ${result.deletedCount} events from Google Calendar!`);
             
             // Hide the delete button and clear batch ID
