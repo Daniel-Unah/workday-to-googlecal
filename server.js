@@ -359,6 +359,14 @@ app.post('/api/calendar/events', async (req, res) => {
         if (!courses || !Array.isArray(courses)) {
             return res.status(400).json({ error: 'Courses data is required' });
         }
+        
+        // Limit maximum number of courses to prevent timeouts and memory issues
+        const MAX_COURSES = 100;
+        if (courses.length > MAX_COURSES) {
+            return res.status(400).json({ 
+                error: `Too many courses. Maximum ${MAX_COURSES} courses allowed per upload. Please split your schedule into smaller files.` 
+            });
+        }
 
         const calendarManager = new GoogleCalendarManager(req.session.userId);
         // Pass session tokens for production

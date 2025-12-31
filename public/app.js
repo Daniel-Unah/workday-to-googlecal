@@ -83,9 +83,17 @@ function parseExcelFile(file) {
             
             // Save courses to sessionStorage so they persist across page reloads (e.g., OAuth redirect)
             try {
-                sessionStorage.setItem('courses', JSON.stringify(courses));
+                const coursesJson = JSON.stringify(courses);
+                // Check if data is too large (sessionStorage typically has 5-10MB limit)
+                if (coursesJson.length > 5 * 1024 * 1024) { // 5MB limit
+                    console.warn('Courses data too large for sessionStorage, some data may be lost on page reload');
+                }
+                sessionStorage.setItem('courses', coursesJson);
             } catch (e) {
                 console.warn('Could not save courses to sessionStorage:', e);
+                if (e.name === 'QuotaExceededError') {
+                    showError('Warning: Course data is too large to save. If you refresh the page, you may need to upload your file again.');
+                }
             }
             
             // Enable Google Calendar button if authenticated
@@ -1044,7 +1052,19 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
         btn.innerHTML = '<span class="btn-icon">⏳</span>Adding to Calendar...';
         btn.disabled = true;
         
+        // Prevent duplicate submissions
+        if (btn.dataset.processing === 'true') {
+            showGoogleError('Please wait for the current operation to complete.');
+            btn.disabled = false;
+            return;
+        }
+        btn.dataset.processing = 'true';
+        
         // Send courses to server to add to Google Calendar
+        // Add timeout to prevent hanging requests (5 minutes for large uploads)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+        
         const response = await fetch('/api/calendar/events', {
             method: 'POST',
             headers: {
@@ -1063,8 +1083,16 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
                 })),
                 calendarId: calendarId,
                 batchId: batchId
-            })
+            }),
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
         
         const result = await response.json();
         
@@ -1091,10 +1119,15 @@ document.getElementById('addToGoogleBtn').addEventListener('click', async () => 
             showGoogleError('Failed to add events to Google Calendar: ' + result.error);
         }
     } catch (error) {
-        showGoogleError('Error adding events to Google Calendar: ' + error.message);
+        if (error.name === 'AbortError') {
+            showGoogleError('Request timed out. This may happen with many courses. Please try again or split your schedule into smaller files.');
+        } else {
+            showGoogleError('Error adding events to Google Calendar: ' + error.message);
+        }
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
+        btn.dataset.processing = 'false';
     }
 });
 
